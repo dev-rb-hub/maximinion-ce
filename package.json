@@ -1,0 +1,28 @@
+{
+  "name": "maximinion-ai",
+  "version": "0.1.0",
+  "description": "Precision Context Orchestration - Signal-to-Noise Ratio Optimization Engine",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "dev": "npm run dev --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "test:watch": "npm run test:watch --workspaces --if-present",
+    "test:coverage": "npm run test:coverage --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "clean": "npm run clean --workspaces --if-present"
+  },
+  "keywords": [
+    "LLM",
+    "context",
+    "optimization",
+    "signal-to-noise",
+    "token-efficiency",
+    "operations-research"
+  ],
+  "author": "",
+  "license": "MIT"
+}
