@@ -13,37 +13,37 @@ graph TB
     subgraph "Input"
         A["Raw Codebase<br/>(Source Files)"]
     end
-    
+
     subgraph "Phase 1: The Refiner"
         B["Sanitizer<br/>(PII Removal)"]
         C["Entropy Calculator<br/>(Noise Detection)"]
         D["Semantic Folder<br/>(LLM Compression)"]
     end
-    
+
     subgraph "Phase 2: The Librarian"
         E["Graph Builder<br/>(Dependency Analysis)"]
         F["Centrality Analyzer<br/>(Importance Scoring)"]
         G["Semantic Ranker<br/>(Context Selection)"]
     end
-    
+
     subgraph "Phase 3: Manifest Generator"
         H["Hierarchy Builder<br/>(Topological Sort)"]
         I["Cross-Ref Resolver<br/>(Dependency Graph)"]
         J["Manifest Compiler<br/>(Multi-format Export)"]
     end
-    
+
     subgraph "Phase 4: Proxy Transport"
         K["Context Manager<br/>(Caching + Sessions)"]
         L["Manifest Streamer<br/>(Real-time Updates)"]
         M["Transport Server<br/>(HTTP/WebSocket)"]
         N["IDE Adapter<br/>(VS Code/JetBrains)"]
     end
-    
+
     subgraph "Output"
         O["LLM Context<br/>(Optimized)"]
         P["IDE UI<br/>(Live Decorations)"]
     end
-    
+
     A --> B --> C --> D
     D --> E --> F --> G
     G --> H --> I --> J
@@ -52,6 +52,82 @@ graph TB
     K --> N --> P
     M --> O
 ```
+
+## VS Code Integration Architecture
+
+This reference view shows how the VS Code extension, analysis pipeline, manifest cache, local proxy, and optional analytics service work together during an LLM-assisted development session.
+
+```mermaid
+graph TB
+    Developer["👤 Developer<br/>(VSCode)"]
+    Extension["📦 VSCode Extension<br/>(TypeScript)"]
+    Sidebar["🎛️ Sidebar Panel<br/>Token Budget<br/>Manifest Preview"]
+    FileWatcher["👁️ File Watchers<br/>Detect Changes"]
+
+    RefinerModule["🔧 REFINER<br/>(Sanitization)"]
+    PIIScrubber["🔐 PII/Secret Scrubber<br/>(Regex + ML)"]
+    EntropyCalc["📊 Entropy Calculator<br/>(Shannon)"]
+    OllamaFold["🤖 Semantic Folding<br/>(Ollama/Phi-3)"]
+
+    LibrarianModule["📚 LIBRARIAN<br/>(Ranking)"]
+    TreeSitter["🌳 Tree-sitter Parser<br/>(AST)"]
+    DepGraph["🔗 Dependency Graph<br/>Builder"]
+    Centrality["📈 Eigenvector Centrality<br/>Ranker"]
+
+    KnapsackSolver["📦 Knapsack Solver<br/>(0/1 DP)"]
+
+    ManifestGen["📄 Manifest Generator<br/>(Markdown)"]
+    ManifestCache["💾 Manifest Cache<br/>(VSCode State)"]
+
+    Proxy["🔀 Local Proxy Server<br/>(localhost:9999)"]
+    ProxyListener["🎧 TLS Listener<br/>Request Interception"]
+    Augmenter["✨ Payload Augmenter<br/>Context Injection"]
+
+    LLMApi["🚀 LLM API<br/>(OpenAI/Anthropic)"]
+
+    Analytics["📊 Analytics DB<br/>(Optional Cloud)"]
+
+    Developer -->|"Opens VSCode"| Extension
+    Extension --> Sidebar
+    Extension --> FileWatcher
+
+    FileWatcher -->|"Triggers Analysis"| RefinerModule
+    RefinerModule --> PIIScrubber
+    RefinerModule --> EntropyCalc
+    RefinerModule --> OllamaFold
+
+    OllamaFold -->|"Compressed Payload"| LibrarianModule
+    LibrarianModule --> TreeSitter
+    LibrarianModule --> DepGraph
+    LibrarianModule --> Centrality
+
+    Centrality -->|"Ranked Nodes"| KnapsackSolver
+    KnapsackSolver -->|"Optimal Subset"| ManifestGen
+    ManifestGen --> ManifestCache
+    ManifestCache --> Sidebar
+
+    Developer -->|"Uses LLM"| Proxy
+    Proxy --> ProxyListener
+    ProxyListener -->|"Fetch Manifest"| ManifestCache
+    ProxyListener --> Augmenter
+    Augmenter -->|"Augmented Request"| LLMApi
+    LLMApi -->|"Response"| Proxy
+    Proxy -->|"Response"| Developer
+
+    Augmenter -->|"Log Event"| Analytics
+
+    style Developer fill:#e1f5ff
+    style Extension fill:#f3e5f5
+    style RefinerModule fill:#fff3e0
+    style LibrarianModule fill:#e8f5e9
+    style KnapsackSolver fill:#fce4ec
+    style ManifestGen fill:#f1f8e9
+    style Proxy fill:#ede7f6
+    style LLMApi fill:#e0f2f1
+    style Analytics fill:#fff9c4
+```
+
+**Implementation note:** This diagram is an integration reference. The current packages provide the Refiner, Librarian, Manifest Generator, and Proxy Transport foundations; Tree-sitter parsing, the 0/1 knapsack selector, TLS interception, and analytics persistence are extension points or deployment concerns rather than claims about every current implementation detail.
 
 ---
 
