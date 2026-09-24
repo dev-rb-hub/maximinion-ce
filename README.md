@@ -142,24 +142,44 @@ npx @maximinion/proxy-transport --port 3000 --manifest ./MANIFEST.md
 
 ## 📚 Documentation
 
-**Start here:**
-- 📖 [DOCS_INDEX.md](DOCS_INDEX.md) - Complete documentation guide by audience & use case
+**Navigation Hub:**
+- 📖 [docs/index.md](docs/index.md) - Complete documentation guide by audience & use case
+
+**Core Documentation:**
 - 🏗️ [ARCHITECTURE.md](ARCHITECTURE.md) - System design with 12+ Mermaid diagrams
 - 💼 [BUSINESS_MODEL.md](BUSINESS_MODEL.md) - Pricing tiers, deployment options, GTM strategy
 - 🤝 [CONTRIBUTORS.md](CONTRIBUTORS.md) - Development setup, contribution guidelines, review process
 
-**By Phase:**
-- ⚙️ [PHASE_1.md](PHASE_1.md) - Refiner (sanitization, entropy, compression)
-- 📚 [PHASE_2.md](PHASE_2.md) - Librarian (graph analysis, centrality, ranking)
-- 📋 [PHASE_3.md](PHASE_3.md) - Manifest Generator (hierarchy, export, querying)
-- 🚀 [PHASE_4.md](PHASE_4.md) - Proxy Transport (IDE integration, streaming, caching)
+**Phase Documentation:**
+- ⚙️ [docs/PHASE_1.md](docs/PHASE_1.md) - Refiner (sanitization, entropy, compression)
+- 📚 [docs/PHASE_2.md](docs/PHASE_2.md) - Librarian (graph analysis, centrality, ranking)
+- 📋 [docs/PHASE_3.md](docs/PHASE_3.md) - Manifest Generator (hierarchy, export, querying)
+- 🚀 [docs/PHASE_4.md](docs/PHASE_4.md) - Proxy Transport (IDE integration, streaming, caching)
+
+**Guides & Tutorials:**
+- 🛠️ [docs/GUIDES/local-setup.md](docs/GUIDES/local-setup.md) - Development environment setup
+- 🚀 [docs/GUIDES/deployment.md](docs/GUIDES/deployment.md) - Deployment & hosting options
+- 🔒 [docs/GUIDES/security.md](docs/GUIDES/security.md) - Security best practices & compliance
+- 🐛 [docs/GUIDES/troubleshooting.md](docs/GUIDES/troubleshooting.md) - Common issues & fixes
+
+**API Reference:**
+- [docs/API/refiner-api.md](docs/API/refiner-api.md) - Phase 1 API
+- [docs/API/librarian-api.md](docs/API/librarian-api.md) - Phase 2 API
+- [docs/API/manifest-api.md](docs/API/manifest-api.md) - Phase 3 API
+- [docs/API/proxy-api.md](docs/API/proxy-api.md) - Phase 4 API
+
+**Code Examples:**
+- [docs/EXAMPLES/refiner-example.ts](docs/EXAMPLES/refiner-example.ts)
+- [docs/EXAMPLES/librarian-example.ts](docs/EXAMPLES/librarian-example.ts)
+- [docs/EXAMPLES/manifest-example.ts](docs/EXAMPLES/manifest-example.ts)
+- [docs/EXAMPLES/proxy-example.ts](docs/EXAMPLES/proxy-example.ts)
 
 **By Audience:**
-- 👨‍💻 Individual Developer? Start with [Quick Start](#quick-start) above
+- 👨‍💻 Individual Developer? Start with [Quick Start](#quick-start) above, then [docs/GUIDES/local-setup.md](docs/GUIDES/local-setup.md)
 - 🤝 Team Lead? See [ARCHITECTURE.md](ARCHITECTURE.md) & [BUSINESS_MODEL.md](BUSINESS_MODEL.md)
 - 🏢 Enterprise? See [BUSINESS_MODEL.md#tier-3-enterprise-edition](BUSINESS_MODEL.md#tier-3-enterprise-edition)
 - 🔬 Researcher? See [ARCHITECTURE.md](ARCHITECTURE.md) - includes algorithm citations
-- 🛠️ Contributor? See [CONTRIBUTORS.md](CONTRIBUTORS.md)
+- 🛠️ Contributor? See [CONTRIBUTORS.md](CONTRIBUTORS.md) and [docs/index.md](docs/index.md)
 
 ---
 
