@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "baseUrl": "./",
+    "paths": {
+      "@maximinion/refiner": ["../../packages/refiner/src"],
+      "@maximinion/librarian": ["../../packages/librarian/src"],
+      "@maximinion/manifest-generator": ["../../packages/manifest-generator/src"]
+    }
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist", "tests"]
+}
