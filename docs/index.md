@@ -14,6 +14,42 @@ Welcome to the MaxiMinion.AI documentation hub. This guide helps you navigate al
 - **[ARCHITECTURE.md](../ARCHITECTURE.md)** - System design, component diagrams, data flow
 - **[BUSINESS_MODEL.md](../BUSINESS_MODEL.md)** - Pricing strategy, versioning, deployment options
 
+## 🗺️ Project Visual Architecture
+
+This diagram shows the primary project flow from a source workspace to optimized context delivered locally or through the hosted gateway.
+
+```mermaid
+flowchart LR
+    Source["Source workspace<br/>TypeScript / JavaScript"] --> Refiner["Phase 1<br/>The Refiner<br/>Sanitize + compress"]
+    Refiner --> Librarian["Phase 2<br/>The Librarian<br/>Map dependencies + rank"]
+    Librarian --> Manifest["Phase 3<br/>Manifest Generator<br/>Build structured context"]
+    Manifest --> Proxy["Phase 4<br/>Proxy Transport<br/>Cache + stream context"]
+
+    subgraph Delivery["Context delivery"]
+        Local["Local CLI / process<br/>(Community Edition)"]
+        Gateway["Hosted cloud gateway<br/>(Professional / Enterprise)"]
+    end
+
+    Proxy --> Local
+    Proxy --> Gateway
+    Local --> IDE["IDE integration<br/>VS Code / JetBrains"]
+    Gateway --> IDE
+    Local --> LLM["LLM provider<br/>Local or remote"]
+    Gateway --> LLM
+
+    classDef phase fill:#e8f1fb,stroke:#2563a6,color:#12304a
+    classDef delivery fill:#eef7ed,stroke:#3f7d45,color:#1e3b21
+    class Refiner,Librarian,Manifest,Proxy phase
+    class Local,Gateway,IDE,LLM delivery
+```
+
+**Architecture at a glance:**
+
+- The four phases form a composable pipeline; each phase can be used independently.
+- Community deployments run locally with no hosted gateway dependency.
+- Professional and Enterprise deployments can add the hosted gateway for shared sessions, distributed caching, and team access.
+- Detailed component, data-flow, security, and scaling diagrams are available in [ARCHITECTURE.md](../ARCHITECTURE.md).
+
 ---
 
 ## 📋 Phase Documentation
