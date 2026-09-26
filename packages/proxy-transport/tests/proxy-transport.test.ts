@@ -298,6 +298,11 @@ describe('Phase 4: THE PROXY TRANSPORT - Unit Tests', () => {
       proxy = new ProxyTransport({}, mockAdapter);
     });
 
+    afterEach(() => {
+      // initialize() starts real timers (streaming + maintenance); clear them so Jest can exit
+      proxy.shutdown();
+    });
+
     test('should initialize', async () => {
       const nodeMap = new Map(mockNodes.map((n) => [n.id, n]));
       await proxy.initialize(mockManifest, nodeMap);

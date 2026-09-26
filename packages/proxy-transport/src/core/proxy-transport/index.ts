@@ -174,6 +174,15 @@ export class ProxyTransport {
   }
 
   /**
+   * Stop streaming and periodic maintenance timers started by initialize()
+   */
+  shutdown(): void {
+    this.manifestStreamer.stopStreaming();
+    this.transportServer.stopMaintenance();
+    this.isInitialized = false;
+  }
+
+  /**
    * Get health status
    */
   getHealth(): {

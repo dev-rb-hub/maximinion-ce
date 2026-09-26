@@ -23,6 +23,7 @@ export class TransportServer {
   private connections = new Map<string, ConnectionState>();
   private messageId = 0;
   private startTime = Date.now();
+  private maintenanceInterval: NodeJS.Timeout | null = null;
   private metrics: TransportMetrics = {
     sessionsActive: 0,
     sessionsPeak: 0,
@@ -250,9 +251,21 @@ export class TransportServer {
    * Start periodic maintenance
    */
   startMaintenance(intervalMs: number = 60000): NodeJS.Timeout {
-    return setInterval(() => {
+    this.stopMaintenance();
+    this.maintenanceInterval = setInterval(() => {
       this.performMaintenance();
     }, intervalMs);
+    return this.maintenanceInterval;
+  }
+
+  /**
+   * Stop periodic maintenance
+   */
+  stopMaintenance(): void {
+    if (this.maintenanceInterval) {
+      clearInterval(this.maintenanceInterval);
+      this.maintenanceInterval = null;
+    }
   }
 
   /**

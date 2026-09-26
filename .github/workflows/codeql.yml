@@ -10,9 +10,14 @@ on:
   schedule:
     - cron: "0 6 * * 1" # weekly Monday scan
 
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   analyze:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       security-events: write
       contents: read

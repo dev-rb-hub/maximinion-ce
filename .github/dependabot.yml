@@ -16,3 +16,9 @@ updates:
       interval: "weekly"
     labels:
       - "dependencies"
+    # One PR per week instead of one per package, so CI/CodeQL don't fan out
+    # into a pile of simultaneous runs across separate dependabot branches.
+    groups:
+      npm-dependencies:
+        patterns:
+          - "*"

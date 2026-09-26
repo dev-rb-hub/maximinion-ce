@@ -16,6 +16,7 @@ concurrency:
 jobs:
   build-test-lint:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     strategy:
       matrix:
         # Floor (engines >=18) + latest — the 20.x midpoint adds little marginal
@@ -36,6 +37,7 @@ jobs:
 
   audit:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -48,6 +50,7 @@ jobs:
   dependency-review:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/dependency-review-action@v4
