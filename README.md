@@ -147,7 +147,6 @@ npx @maximinion/proxy-transport --port 3000 --manifest ./MANIFEST.md
 
 **Core Documentation:**
 - 🏗️ [ARCHITECTURE.md](ARCHITECTURE.md) - System design with 12+ Mermaid diagrams
-- 💼 [BUSINESS_MODEL.md](BUSINESS_MODEL.md) - Pricing tiers, deployment options, GTM strategy
 - 🤝 [CONTRIBUTORS.md](CONTRIBUTORS.md) - Development setup, contribution guidelines, review process
 
 **Phase Documentation:**
@@ -176,8 +175,8 @@ npx @maximinion/proxy-transport --port 3000 --manifest ./MANIFEST.md
 
 **By Audience:**
 - 👨‍💻 Individual Developer? Start with [Quick Start](#quick-start) above, then [docs/GUIDES/local-setup.md](docs/GUIDES/local-setup.md)
-- 🤝 Team Lead? See [ARCHITECTURE.md](ARCHITECTURE.md) & [BUSINESS_MODEL.md](BUSINESS_MODEL.md)
-- 🏢 Enterprise? See [BUSINESS_MODEL.md#tier-3-enterprise-edition](BUSINESS_MODEL.md#tier-3-enterprise-edition)
+- 🤝 Team Lead? See [ARCHITECTURE.md](ARCHITECTURE.md)
+- 🏢 Enterprise? See the [Pricing & Licensing](#-pricing--licensing) section below, or contact pricing@maximinion.ai
 - 🔬 Researcher? See [ARCHITECTURE.md](ARCHITECTURE.md) - includes algorithm citations
 - 🛠️ Contributor? See [CONTRIBUTORS.md](CONTRIBUTORS.md) and [docs/index.md](docs/index.md)
 
@@ -219,8 +218,6 @@ npx @maximinion/proxy-transport --port 3000 --manifest ./MANIFEST.md
 - ✅ Unlimited scale, custom integrations
 - ✅ SSO/SAML, RBAC, SLA 99.9%
 - 📍 **For:** Fortune 500, regulated industries, large teams
-
-📋 [Full Pricing Details →](BUSINESS_MODEL.md#recommended-product-tiers)
 
 ---
 
@@ -264,8 +261,6 @@ npx @maximinion/proxy-transport --port 3000 --manifest ./MANIFEST.md
 - Dynamic importance re-weighting
 - *Access:* Enterprise Edition add-on
 
-📋 [Full Roadmap →](BUSINESS_MODEL.md#5-year-vision)
-
 ---
 
 ## 🤝 Contributing
@@ -278,8 +273,8 @@ We welcome contributions! See [CONTRIBUTORS.md](CONTRIBUTORS.md) for:
 
 **Quick Setup:**
 ```bash
-git clone https://github.com/maximinion/maximinion.ai
-cd maximinion.ai
+git clone https://github.com/dev-rb-hub/maximinion-ce.git
+cd maximinion-ce
 npm install
 npm test  # Run all tests
 npm run build  # Compile all packages
@@ -305,12 +300,12 @@ npm run build  # Compile all packages
 
 | Resource | Link |
 |----------|------|
-| **GitHub** | [maximinion/maximinion.ai](https://github.com/maximinion/maximinion.ai) |
+| **GitHub** | [dev-rb-hub/maximinion-ce](https://github.com/dev-rb-hub/maximinion-ce) |
 | **npm Package** | [@maximinion/refiner](https://www.npmjs.com/package/@maximinion/refiner) |
 | **VS Code Extension** | [MaxiMinion](https://marketplace.visualstudio.com/items?itemName=maximinion.maximinion) |
-| **Documentation** | [DOCS_INDEX.md](DOCS_INDEX.md) |
-| **Issues & Bugs** | [GitHub Issues](https://github.com/maximinion/maximinion.ai/issues) |
-| **Discussions** | [GitHub Discussions](https://github.com/maximinion/maximinion.ai/discussions) |
+| **Documentation** | [docs/index.md](docs/index.md) |
+| **Issues & Bugs** | [GitHub Issues](https://github.com/dev-rb-hub/maximinion-ce/issues) |
+| **Discussions** | [GitHub Discussions](https://github.com/dev-rb-hub/maximinion-ce/discussions) |
 
 ---
 
@@ -326,20 +321,20 @@ A: No. Community Edition runs entirely locally. Professional/Enterprise use mana
 A: Yes! Community Edition is production-ready. Professional/Enterprise tiers include SLA guarantees and support.
 
 **Q: What's the learning curve?**  
-A: ~30 minutes for basic usage, ~2 hours for full system understanding. See [DOCS_INDEX.md](DOCS_INDEX.md#learning-path).
+A: ~30 minutes for basic usage, ~2 hours for full system understanding. See [docs/index.md](docs/index.md).
 
 **Q: How do I contribute?**  
 A: See [CONTRIBUTORS.md](CONTRIBUTORS.md#getting-started). Good first issues available!
 
 **Q: What's the licensing for proprietary projects?**  
-A: Community Edition (MIT) is fine for any use. For Phase 5-6 features, see [BUSINESS_MODEL.md](BUSINESS_MODEL.md#licensing-strategy).
+A: Community Edition (MIT) is fine for any use. Phase 5-6 (Enterprise) features are licensed separately — contact pricing@maximinion.ai for terms.
 
 ---
 
 ## 📞 Support
 
-- 💬 **Community:** [GitHub Discussions](https://github.com/maximinion/maximinion.ai/discussions)
-- 🐛 **Bug Reports:** [GitHub Issues](https://github.com/maximinion/maximinion.ai/issues)
+- 💬 **Community:** [GitHub Discussions](https://github.com/dev-rb-hub/maximinion-ce/discussions)
+- 🐛 **Bug Reports:** [GitHub Issues](https://github.com/dev-rb-hub/maximinion-ce/issues)
 - 📧 **Professional Support:** pricing@maximinion.ai
 - 🎯 **Enterprise Support:** [Contact Sales](https://maximinion.ai/contact)
 
@@ -347,9 +342,8 @@ A: Community Edition (MIT) is fine for any use. For Phase 5-6 features, see [BUS
 
 ## 📜 License
 
-- **Phases 1-4 (Community Edition):** MIT License
-- **Phases 5-6 (Enterprise Features):** Commercial License + Subscription
-- See [BUSINESS_MODEL.md](BUSINESS_MODEL.md#licensing-strategy) for details
+- **Phases 1-4 (Community Edition):** MIT License (this repository)
+- **Phases 5-6 (Enterprise Features):** Commercial License + Subscription, maintained in a separate private repository — contact pricing@maximinion.ai for terms
 
 ---
 
