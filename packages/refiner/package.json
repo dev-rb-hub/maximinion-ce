@@ -1,6 +1,6 @@
 {
   "name": "@maximinion/refiner",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Phase 1: The Refiner - Context Sanitization & Entropy Scoring",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

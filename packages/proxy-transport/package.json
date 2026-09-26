@@ -1,6 +1,6 @@
 {
   "name": "@maximinion/proxy-transport",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Phase 4: The Proxy Transport - Real-time context injection with IDE integration",
   "main": "dist/core/proxy-transport/index.js",
   "types": "dist/core/proxy-transport/index.d.ts",
