@@ -4,7 +4,7 @@
     "lib": ["ES2020"],
     "outDir": "./dist",
     "rootDir": "./src",
-    "types": ["node", "vscode"]
+    "types": ["node", "vscode", "jest"]
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist"]
