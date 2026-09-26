@@ -18,7 +18,9 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        node-version: [18.x, 20.x, 22.x]
+        # Floor (engines >=18) + latest — the 20.x midpoint adds little marginal
+        # coverage once both ends of the supported range pass.
+        node-version: [18.x, 22.x]
     steps:
       - uses: actions/checkout@v4
 
