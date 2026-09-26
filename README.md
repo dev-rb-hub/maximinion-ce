@@ -3,7 +3,7 @@
 MaxiMinion.AI - the operational research engine for Context Window Management and Token Economics
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Tests: 106/106 Passing](https://img.shields.io/badge/Tests-106%2F106-brightgreen.svg)](#)
+[![Tests: 109/109 Passing](https://img.shields.io/badge/Tests-109%2F109-brightgreen.svg)](#)
 [![Engine: Operations Research](https://img.shields.io/badge/Engine-Operations%20Research-blue.svg)](#)
 [![Focus: Signal-to-Noise Ratio](https://img.shields.io/badge/Focus-SNR%20Optimization-green.svg)](#)
 [![Node.js: 18+](https://img.shields.io/badge/Node.js-18%2B-darkgreen.svg)](#)
@@ -64,13 +64,11 @@ We transform your codebase into **high-density semantic payloads** via four prec
 
 📖 [Learn More →](PHASE_3.md) | 🧪 Tests: 25/25 ✅
 
-### Phase 4️⃣ : Proxy Transport 🚀
-**Real-Time Context Delivery with IDE Integration**
-- Transparent HTTP/WebSocket proxy
-- Live IDE decorations (VS Code, JetBrains)
-- Session management & intelligent caching (LRU/LFU/FIFO)
-- <100ms P95 latency, 70%+ cache hit rate
-- **Result:** Context injected automatically, no copy-paste needed
+### Phase 4️⃣ : Proxy Transport Foundations 🚀
+**Context Selection and Transport APIs**
+- Context selection, session, cache, and transport message-handling foundations
+- IDE adapter interfaces; live VS Code and JetBrains integrations are not implemented yet
+- **Result:** TypeScript APIs for context queries and transport integration
 
 📖 [Learn More →](PHASE_4.md) | 🧪 Tests: 34/34 ✅
 
@@ -78,18 +76,17 @@ We transform your codebase into **high-density semantic payloads** via four prec
 
 ## 📊 Verified Results
 
-**All 4 Phases Production-Ready:**
-- ✅ 106/106 unit tests passing
-- ✅ 291 dependencies, 0 vulnerabilities
+**Current Workspace Status:**
+- ✅ 109/109 unit tests passing across five workspaces
+- ✅ 548 packages audited, 0 known vulnerabilities
 - ✅ TypeScript strict mode, full type coverage
 - ✅ Comprehensive documentation with 12+ Mermaid diagrams
 - ✅ Dual-licensed (MIT Phase 1-4, Commercial Phase 5-6)
+- 🧩 VS Code extension MVP sanitizes the active file locally; Marketplace publication is not available yet
 
-**Real-World Impact:**
-- 🎯 **Token Efficiency:** 30-50% token reduction while improving LLM quality
-- 🎯 **Privacy:** 100% secret detection and removal
-- 🎯 **Speed:** Sub-100ms context delivery
-- 🎯 **Scale:** 1000+ concurrent sessions tested
+**Verified Capabilities:**
+- 🎯 **Privacy:** Pattern-based secret detection and redaction; review output before sharing
+- 🎯 **Extension:** Active-file preview and clipboard sanitization run locally
 
 ---
 
@@ -97,12 +94,17 @@ We transform your codebase into **high-density semantic payloads** via four prec
 
 ### Installation
 
-#### Option 1: VS Code Extension (Free)
+#### Option 1: VS Code Extension (Local VSIX)
 ```bash
-# Open VS Code and search for "MaxiMinion" in Extensions
-# Or install directly:
-# https://marketplace.visualstudio.com/items?itemName=maximinion.maximinion
+npm ci
+npm run build
+npm run package --workspace packages/vscode-extension
+code --install-extension packages/vscode-extension/maximinion-0.1.0.vsix
 ```
+
+The extension is not published to the Marketplace yet. It provides local active-file sanitization; see [its README](packages/vscode-extension/README.md).
+
+To prepare a release, run the **VS Code Extension Release** GitHub Actions workflow. It packages a versioned VSIX by default; publishing requires selecting the publish option and configuring the `VSCE_PAT` repository secret. Azure DevOps global PATs are scheduled for retirement on December 1, 2026, so migrate the publishing credential before then.
 
 #### Option 2: npm CLI Tool
 ```bash
@@ -189,7 +191,7 @@ npx @maximinion/proxy-transport --port 3000 --manifest ./MANIFEST.md
 | Remove secrets from code | Phase 1 | 5 min |
 | Understand code structure | Phase 2 | 15 min |
 | Generate documentation | Phase 3 | 20 min |
-| Use context in VS Code | Phase 4 | 10 min |
+| Sanitize the active file in VS Code | Phase 1 + extension MVP | 1 min |
 | Deploy for team | Phase 4 + hosting | 1-2 hours |
 
 ---
@@ -197,9 +199,9 @@ npx @maximinion/proxy-transport --port 3000 --manifest ./MANIFEST.md
 ## 💰 Pricing & Licensing
 
 ### Community Edition (Free)
-- ✅ Phases 1-4 (all core features)
+- ✅ Core libraries for Phases 1-4
 - ✅ MIT License (perpetual)
-- ✅ CLI tool + VS Code extension
+- ✅ CLI tools + local VS Code sanitizer MVP
 - ✅ Local deployment only
 - 📍 **For:** Individuals, open-source projects, evaluation
 
@@ -247,7 +249,9 @@ npx @maximinion/proxy-transport --port 3000 --manifest ./MANIFEST.md
 
 ## 📈 Roadmap
 
-**Phase 1-4:** ✅ Complete & production-ready
+**Phase 1-3:** Core libraries implemented and covered by unit tests
+
+**Phase 4:** Context and transport foundations implemented; live IDE integration remains future work. The VS Code extension currently provides local active-file sanitization only.
 
 **Phase 5: The Evaluator** (2026)
 - Quality metrics & LLM reasoning scoring
@@ -286,13 +290,13 @@ npm run build  # Compile all packages
 
 | Metric | Value |
 |--------|-------|
-| Tests Passing | 106/106 ✅ |
+| Tests Passing | 109/109 ✅ |
 | Type Coverage | 100% (strict mode) |
-| Packages | 4 (@maximinion/*) |
+| Packages | 4 core libraries + VS Code extension |
 | Lines of Code | ~8,000 |
-| Dependencies | 291 (0 vulnerabilities) |
+| Dependencies | 548 packages audited, 0 known vulnerabilities |
 | License | MIT (Community), Commercial (Enterprise) |
-| Latest Release | v1.0.0 |
+| VS Code Extension | 0.1.0 local VSIX; Marketplace publication pending |
 
 ---
 
@@ -302,7 +306,7 @@ npm run build  # Compile all packages
 |----------|------|
 | **GitHub** | [dev-rb-hub/maximinion-ce](https://github.com/dev-rb-hub/maximinion-ce) |
 | **npm Package** | [@maximinion/refiner](https://www.npmjs.com/package/@maximinion/refiner) |
-| **VS Code Extension** | [MaxiMinion](https://marketplace.visualstudio.com/items?itemName=maximinion.maximinion) |
+| **VS Code Extension** | Marketplace publication pending; [build and install the VSIX](packages/vscode-extension/README.md) |
 | **Documentation** | [docs/index.md](docs/index.md) |
 | **Issues & Bugs** | [GitHub Issues](https://github.com/dev-rb-hub/maximinion-ce/issues) |
 | **Discussions** | [GitHub Discussions](https://github.com/dev-rb-hub/maximinion-ce/discussions) |
@@ -318,7 +322,7 @@ A: Yes, Community Edition (Phases 1-4) is MIT-licensed and free forever. Profess
 A: No. Community Edition runs entirely locally. Professional/Enterprise use managed cloud servers (your choice of region, data stays encrypted).
 
 **Q: Can I use this in production?**  
-A: Yes! Community Edition is production-ready. Professional/Enterprise tiers include SLA guarantees and support.
+A: The core packages have passing unit tests, but the Phase 4 live IDE integration is not implemented. Validate the specific workflow and security requirements before production use. Professional/Enterprise tiers include SLA guarantees and support.
 
 **Q: What's the learning curve?**  
 A: ~30 minutes for basic usage, ~2 hours for full system understanding. See [docs/index.md](docs/index.md).
@@ -362,11 +366,12 @@ MaxiMinion.AI stands on the shoulders of giants:
 
 ---
 
-**Status:** ✅ Production Ready (v1.0.0)  
+**Status:** Core tests pass; VS Code extension is a local 0.1.0 VSIX, Marketplace publication pending
+
 **Last Updated:** 2026-09-24  
 **Maintained By:** MaxiMinion.AI Team
 
-**Questions?** Open an issue or join our [GitHub Discussions](https://github.com/maximinion/maximinion.ai/discussions)!
+**Questions?** Open an issue in the [Community Edition repository](https://github.com/dev-rb-hub/maximinion-ce/issues).
 
 
 ## 🚨 The Problem: The Context Paradox

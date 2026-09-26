@@ -205,10 +205,10 @@ flowchart LR
 
 ### Use Case 4: "I want to integrate context into my IDE"
 1. Start: [README.md](../README.md) - Overview
-2. Learn: [PHASE_4.md](PHASE_4.md) - Proxy transport & IDE integration
-3. Install: VS Code Extension from Marketplace (free)
-4. Deep Dive: [PHASE_4.md](PHASE_4.md#ide-integration) - Live context
-5. Advanced: [ARCHITECTURE.md](../ARCHITECTURE.md#phase-4-proxy-transport) - Custom adapters
+2. Learn: [PHASE_4.md](PHASE_4.md) - Proxy transport foundations
+3. Try: [VS Code sanitizer MVP](../packages/vscode-extension/README.md) - Build and install a local VSIX
+4. Note: Marketplace publishing and live context injection are not available yet
+5. Advanced: [ARCHITECTURE.md](../ARCHITECTURE.md#phase-4-proxy-transport) - Planned integration architecture
 
 ### Use Case 5: "I want to deploy MaxiMinion for my team"
 1. Start: [README.md](../README.md) - Overview
@@ -344,11 +344,12 @@ maximinion.ai/
     ├── manifest-example.ts     # Manifest usage example
     └── proxy-example.ts        # Proxy Transport example
 
-packages/                        # Source code (4 packages)
+packages/                        # Source code (5 packages)
 ├── refiner/
 ├── librarian/
 ├── manifest-generator/
-└── proxy-transport/
+├── proxy-transport/
+└── vscode-extension/            # Local VS Code sanitizer MVP
 ```
 
 ---
@@ -357,19 +358,21 @@ packages/                        # Source code (4 packages)
 
 | Need | Link |
 |------|------|
-| Report a bug | [GitHub Issues](https://github.com/maximinion/maximinion.ai/issues) |
-| Request a feature | [GitHub Issues](https://github.com/maximinion/maximinion.ai/issues) |
-| Get help | [GitHub Discussions](https://github.com/maximinion/maximinion.ai/discussions) |
+| Report a bug | [GitHub Issues](https://github.com/dev-rb-hub/maximinion-ce/issues) |
+| Request a feature | [GitHub Issues](https://github.com/dev-rb-hub/maximinion-ce/issues) |
+| Get help | [GitHub Issues](https://github.com/dev-rb-hub/maximinion-ce/issues) |
 | Contribute code | [CONTRIBUTORS.md](../CONTRIBUTORS.md) |
-| View releases | [GitHub Releases](https://github.com/maximinion/maximinion.ai/releases) |
+| View releases | [GitHub Releases](https://github.com/dev-rb-hub/maximinion-ce/releases) |
 | npm package | [@maximinion/refiner](https://www.npmjs.com/package/@maximinion/refiner) |
-| VS Code extension | [MaxiMinion](https://marketplace.visualstudio.com/items?itemName=maximinion.maximinion) |
+| VS Code extension | Marketplace publication pending; [build and install a local VSIX](../packages/vscode-extension/README.md) |
 
 ---
 
 ## 🚀 Roadmap
 
-**Phase 1-4:** ✅ Complete (open-source)
+**Phases 1-3:** Core libraries implemented and covered by unit tests
+
+**Phase 4:** Context and transport foundations; live IDE integration remains future work. The VS Code extension is currently a local sanitizer MVP.
 
 **Phase 5: The Evaluator** (Year 2)
 - Context quality metrics
