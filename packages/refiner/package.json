@@ -4,6 +4,18 @@
   "description": "Phase 1: The Refiner - Context Sanitization & Entropy Scoring",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "bin": {
+    "refiner": "dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",

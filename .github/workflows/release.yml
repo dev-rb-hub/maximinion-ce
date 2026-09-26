@@ -1,0 +1,45 @@
+name: Release
+
+# Publishes @maximinion/* packages to npm. Triggered manually or by pushing a
+# `v*` tag. Requires an NPM_TOKEN repo secret (npm automation token with
+# publish rights to the @maximinion org/scope).
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20.x
+          registry-url: https://registry.npmjs.org
+          cache: npm
+
+      - run: npm ci
+      - run: npm run build --workspaces --if-present
+      - run: npm run test --workspaces --if-present
+
+      # Published in dependency order: refiner has no internal deps, each
+      # subsequent package depends on the ones before it.
+      - name: Publish packages
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          npm publish --workspace packages/refiner --provenance
+          npm publish --workspace packages/librarian --provenance
+          npm publish --workspace packages/manifest-generator --provenance
+          npm publish --workspace packages/proxy-transport --provenance
