@@ -22,6 +22,8 @@ concurrency:
 
 jobs:
   package:
+    # workflow_dispatch requires write access; reject non-CODEOWNER and non-main runs before any steps execute.
+    if: ${{ github.actor == 'dev-rb-hub' && github.triggering_actor == 'dev-rb-hub' && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -54,8 +56,31 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-      - name: Publish to Visual Studio Marketplace
-        if: ${{ inputs.publish }}
+  publish:
+    needs: package
+    if: ${{ inputs.publish && github.actor == 'dev-rb-hub' && github.triggering_actor == 'dev-rb-hub' && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    environment: vscode-marketplace
+    permissions:
+      contents: read
+      deployments: write
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+          cache: npm
+
+      - run: npm ci
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: maximinion-vsix
+          path: packages/vscode-extension/release-artifacts
+
+      - name: Publish approved VSIX
         working-directory: packages/vscode-extension
         env:
           EXTENSION_VERSION: ${{ inputs.version }}
@@ -65,4 +90,4 @@ jobs:
             echo "::error::Configure the VSCE_PAT repository secret before publishing"
             exit 1
           fi
-          npx vsce publish "$EXTENSION_VERSION" --no-dependencies --no-git-tag-version
+          npx vsce publish --packagePath "release-artifacts/maximinion-$EXTENSION_VERSION.vsix" --no-dependencies
