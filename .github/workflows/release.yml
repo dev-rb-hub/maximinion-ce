@@ -28,7 +28,9 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20.x
+          # npm stage / trusted publishing require npm CLI >=11.5.1, which
+          # needs Node >=22.14 (newer than the packages' own >=18 engines floor).
+          node-version: 24.x
           registry-url: https://registry.npmjs.org
           cache: npm
 
