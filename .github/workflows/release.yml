@@ -1,8 +1,10 @@
 name: Release
 
-# Publishes @maximinion/* packages to npm. Triggered manually or by pushing a
-# `v*` tag. Requires an NPM_TOKEN repo secret (npm automation token with
-# publish rights to the @maximinion org/scope).
+# Stages @maximinion/* packages on npm for review (NPM_TOKEN is a stage-only
+# token). Triggered manually or by pushing a `v*` tag. After a run completes,
+# a maintainer must review and promote each staged version locally with 2FA:
+#   npm stage list
+#   npm stage approve <stage-id> --otp <code>
 
 on:
   push:
@@ -34,13 +36,14 @@ jobs:
       - run: npm run build --workspaces --if-present
       - run: npm run test --workspaces --if-present
 
-      # Published in dependency order: refiner has no internal deps, each
-      # subsequent package depends on the ones before it.
-      - name: Publish packages
+      # Staged in dependency order: refiner has no internal deps, each
+      # subsequent package depends on the ones before it. Each stage requires
+      # maintainer approval (npm stage approve) before it goes live.
+      - name: Stage packages for review
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
-          npm publish --workspace packages/refiner --provenance
-          npm publish --workspace packages/librarian --provenance
-          npm publish --workspace packages/manifest-generator --provenance
-          npm publish --workspace packages/proxy-transport --provenance
+          npm stage publish --workspace packages/refiner
+          npm stage publish --workspace packages/librarian
+          npm stage publish --workspace packages/manifest-generator
+          npm stage publish --workspace packages/proxy-transport
