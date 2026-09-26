@@ -1,0 +1,18 @@
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    # Catches exactly this class of issue: actions falling behind a runner-side
+    # Node runtime deprecation (see github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners).
+    labels:
+      - "dependencies"
+      - "github-actions"
+
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "dependencies"
