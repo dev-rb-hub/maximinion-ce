@@ -1,0 +1,70 @@
+{
+  "name": "maximinion",
+  "displayName": "MaxiMinion",
+  "description": "Sanitize secrets from the active editor without changing the source file.",
+  "version": "0.1.0",
+  "publisher": "maximinion",
+  "private": true,
+  "license": "MIT",
+  "homepage": "https://github.com/dev-rb-hub/maximinion-ce",
+  "bugs": {
+    "url": "https://github.com/dev-rb-hub/maximinion-ce/issues",
+    "email": "support@maximinion.ai"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/dev-rb-hub/maximinion-ce"
+  },
+  "engines": {
+    "vscode": "^1.74.0"
+  },
+  "categories": ["Other"],
+  "activationEvents": [
+    "onCommand:maximinion.sanitizeActiveFile",
+    "onCommand:maximinion.copySanitizedActiveFile"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "maximinion.sanitizeActiveFile",
+        "title": "Sanitize Active File",
+        "category": "MaxiMinion"
+      },
+      {
+        "command": "maximinion.copySanitizedActiveFile",
+        "title": "Copy Sanitized Active File",
+        "category": "MaxiMinion"
+      }
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "maximinion.sanitizeActiveFile",
+          "when": "editorTextFocus",
+          "group": "navigation"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "maximinion.copySanitizedActiveFile",
+          "when": "editorTextFocus",
+          "group": "1_modification"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "build": "esbuild src/extension.ts --bundle --platform=node --target=node20 --external:vscode --outfile=dist/extension.js",
+    "typecheck": "tsc --noEmit",
+    "vscode:prepublish": "npm run typecheck && npm run build",
+    "package": "vsce package --no-dependencies"
+  },
+  "devDependencies": {
+    "@maximinion/refiner": "^0.1.1",
+    "@types/vscode": "^1.74.0",
+    "@vscode/vsce": "^3.6.0",
+    "esbuild": "^0.25.0",
+    "typescript": "^5.3.0"
+  }
+}
