@@ -21,7 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
-      contents: read
+      contents: write
       id-token: write
     steps:
       - uses: actions/checkout@v4
@@ -47,6 +47,7 @@ jobs:
       # maintainer approval (npm stage approve) before it goes live. A package
       # whose version is already staged/published is skipped (not an error),
       # so one already-released package can't block the others in this batch.
+      # Each outcome (staged/skipped) + version is recorded for the next step.
       - name: Stage packages for review
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
@@ -55,13 +56,17 @@ jobs:
 
           stage_package() {
             local workspace="$1"
+            local version
+            version=$(node -p "require('./$workspace/package.json').version")
             local output
             if output=$(npm stage publish --workspace "$workspace" 2>&1); then
               echo "$output"
+              echo "STAGED $workspace $version" >> /tmp/stage-results.txt
             else
               echo "$output"
               if echo "$output" | grep -q "Cannot stage previously published version"; then
                 echo "::warning::$workspace version already staged or published; skipping."
+                echo "SKIPPED $workspace $version" >> /tmp/stage-results.txt
               else
                 echo "::error::Failed to stage $workspace"
                 exit 1
@@ -73,3 +78,30 @@ jobs:
           stage_package packages/librarian
           stage_package packages/manifest-generator
           stage_package packages/proxy-transport
+
+      # Gives each staged release a GitHub tag + prerelease for tracking, since
+      # actual npm approval happens outside CI (maintainer runs npm stage
+      # approve locally with 2FA). Marked prerelease until promoted — see
+      # npm-release-promote.yml, which verifies the version is live before
+      # flipping this to a full release.
+      - name: Tag and draft-release newly staged packages
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          [ -f /tmp/stage-results.txt ] || exit 0
+          while read -r status workspace version; do
+            [ "$status" = "STAGED" ] || continue
+            name=$(basename "$workspace")
+            tag="${name}-v${version}"
+            if git rev-parse "$tag" >/dev/null 2>&1; then
+              echo "Tag $tag already exists, skipping."
+              continue
+            fi
+            git tag "$tag"
+            git push origin "$tag"
+            gh release create "$tag" \
+              --title "@maximinion/${name} v${version}" \
+              --notes "$(printf '⏳ **Staged** on npm — pending maintainer 2FA approval (`npm stage approve`).\n\n- Package: `@maximinion/%s@%s`\n- npm: https://www.npmjs.com/package/@maximinion/%s/v/%s\n- Workflow run: %s/%s/actions/runs/%s' "$name" "$version" "$name" "$version" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID")" \
+              --prerelease
+          done < /tmp/stage-results.txt

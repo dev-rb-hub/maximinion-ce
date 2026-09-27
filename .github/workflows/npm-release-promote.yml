@@ -1,0 +1,67 @@
+name: Promote Staged npm Release
+
+# Run this manually AFTER approving a staged package locally with 2FA:
+#   npm stage list
+#   npm stage approve <stage-id> --otp <code>
+#
+# Verifies the version is actually live on the npm registry (not just
+# staged), then flips the corresponding GitHub Release from prerelease to
+# a full published release so GitHub always reflects registry truth.
+
+on:
+  workflow_dispatch:
+    inputs:
+      package:
+        description: Package to promote
+        required: true
+        type: choice
+        options:
+          - refiner
+          - librarian
+          - manifest-generator
+          - proxy-transport
+      version:
+        description: Version that was approved (for example, 0.1.2)
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: npm-release-promote-${{ inputs.package }}-${{ inputs.version }}
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    if: ${{ github.actor == 'dev-rb-hub' && github.triggering_actor == 'dev-rb-hub' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify version is live on npm
+        run: |
+          is_live=$(curl -sf "https://registry.npmjs.org/@maximinion/${{ inputs.package }}" \
+            | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{const j=JSON.parse(d);console.log(j.versions && j.versions['${{ inputs.version }}'] ? 'yes' : 'no')})")
+          if [ "$is_live" != "yes" ]; then
+            echo "::error::@maximinion/${{ inputs.package }}@${{ inputs.version }} is not live on npm yet. Run 'npm stage approve' first."
+            exit 1
+          fi
+          echo "Confirmed @maximinion/${{ inputs.package }}@${{ inputs.version }} is live."
+
+      - name: Promote GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tag="${{ inputs.package }}-v${{ inputs.version }}"
+          notes=$(printf '✅ **Published** on npm.\n\n- Package: `@maximinion/%s@%s`\n- npm: https://www.npmjs.com/package/@maximinion/%s/v/%s' \
+            "${{ inputs.package }}" "${{ inputs.version }}" "${{ inputs.package }}" "${{ inputs.version }}")
+
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release edit "$tag" --prerelease=false --notes "$notes"
+          else
+            gh release create "$tag" \
+              --title "@maximinion/${{ inputs.package }} v${{ inputs.version }}" \
+              --notes "$notes"
+          fi
