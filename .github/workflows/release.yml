@@ -44,12 +44,32 @@ jobs:
 
       # Staged in dependency order: refiner has no internal deps, each
       # subsequent package depends on the ones before it. Each stage requires
-      # maintainer approval (npm stage approve) before it goes live.
+      # maintainer approval (npm stage approve) before it goes live. A package
+      # whose version is already staged/published is skipped (not an error),
+      # so one already-released package can't block the others in this batch.
       - name: Stage packages for review
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
-          npm stage publish --workspace packages/refiner
-          npm stage publish --workspace packages/librarian
-          npm stage publish --workspace packages/manifest-generator
-          npm stage publish --workspace packages/proxy-transport
+          set -o pipefail
+
+          stage_package() {
+            local workspace="$1"
+            local output
+            if output=$(npm stage publish --workspace "$workspace" 2>&1); then
+              echo "$output"
+            else
+              echo "$output"
+              if echo "$output" | grep -q "Cannot stage previously published version"; then
+                echo "::warning::$workspace version already staged or published; skipping."
+              else
+                echo "::error::Failed to stage $workspace"
+                exit 1
+              fi
+            fi
+          }
+
+          stage_package packages/refiner
+          stage_package packages/librarian
+          stage_package packages/manifest-generator
+          stage_package packages/proxy-transport
