@@ -26,6 +26,10 @@ jobs:
     if: ${{ github.actor == 'dev-rb-hub' && github.triggering_actor == 'dev-rb-hub' && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
     steps:
       - uses: actions/checkout@v4
 
@@ -48,6 +52,11 @@ jobs:
             exit 1
           fi
           npx vsce package "$EXTENSION_VERSION" --no-dependencies --no-git-tag-version
+
+      - name: Attest VSIX build provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: packages/vscode-extension/*.vsix
 
       - uses: actions/upload-artifact@v4
         with:
