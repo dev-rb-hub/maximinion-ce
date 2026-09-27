@@ -1,6 +1,6 @@
 {
   "name": "@maximinion/manifest-generator",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "Phase 3: The Manifest Generator - Hierarchical codebase manifest generation with cross-reference resolution",
   "main": "dist/core/manifest-generator/index.js",
   "types": "dist/core/manifest-generator/index.d.ts",

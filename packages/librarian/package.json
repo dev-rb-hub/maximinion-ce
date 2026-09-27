@@ -1,6 +1,6 @@
 {
   "name": "@maximinion/librarian",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Phase 2: The Librarian - Dependency Graph Analysis & Centrality Scoring",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
