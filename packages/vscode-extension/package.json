@@ -21,7 +21,10 @@
   "categories": ["Other"],
   "activationEvents": [
     "onCommand:maximinion.sanitizeActiveFile",
-    "onCommand:maximinion.copySanitizedActiveFile"
+    "onCommand:maximinion.copySanitizedActiveFile",
+    "onCommand:maximinion.runRefinerOnActiveFile",
+    "onCommand:maximinion.openSettings",
+    "onView:maximinion.sidebar"
   ],
   "main": "./dist/extension.js",
   "contributes": {
@@ -35,6 +38,17 @@
         "command": "maximinion.copySanitizedActiveFile",
         "title": "Copy Sanitized Active File",
         "category": "MaxiMinion"
+      },
+      {
+        "command": "maximinion.runRefinerOnActiveFile",
+        "title": "Run Refiner on Active File",
+        "category": "MaxiMinion"
+      },
+      {
+        "command": "maximinion.openSettings",
+        "title": "Open Settings",
+        "category": "MaxiMinion",
+        "icon": "$(gear)"
       }
     ],
     "menus": {
@@ -51,7 +65,58 @@
           "when": "editorTextFocus",
           "group": "1_modification"
         }
+      ],
+      "view/title": [
+        {
+          "command": "maximinion.openSettings",
+          "when": "view == maximinion.sidebar",
+          "group": "navigation"
+        }
       ]
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "maximinion",
+          "title": "MaxiMinion",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "maximinion": [
+        {
+          "id": "maximinion.sidebar",
+          "name": "MaxiMinion",
+          "type": "webview"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "MaxiMinion",
+      "properties": {
+        "maximinion.secretScrubbing.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable secret scrubbing when running the Refiner on the active file."
+        },
+        "maximinion.entropyScoring.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable Shannon entropy scoring of the active file's content."
+        },
+        "maximinion.semanticFolding.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable semantic folding via a local Ollama instance (requires Ollama running at http://localhost:11434). Depends on entropy scoring being enabled."
+        },
+        "maximinion.manifest.exportFormat": {
+          "type": "string",
+          "enum": ["json", "markdown"],
+          "default": "json",
+          "description": "Export format used when generating manifests."
+        }
+      }
     }
   },
   "scripts": {
@@ -59,7 +124,8 @@
     "test": "jest",
     "typecheck": "tsc --noEmit",
     "vscode:prepublish": "npm run typecheck && npm run build",
-    "package": "vsce package --no-dependencies"
+    "package": "vsce package --no-dependencies",
+    "dev": "npm run build && code --extensionDevelopmentPath=%cd% --new-window"
   },
   "devDependencies": {
     "@maximinion/refiner": "^0.1.1",
