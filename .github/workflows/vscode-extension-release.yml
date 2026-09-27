@@ -27,7 +27,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
-      contents: read
+      contents: write
       id-token: write
       attestations: write
     steps:
@@ -65,13 +65,36 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+      # Tags the packaged commit and records a prerelease so GitHub tracks
+      # this VSIX build (and its provenance attestation) even before/without
+      # a Marketplace publish. Mirrors the staged/promoted pattern used for
+      # the @maximinion/* npm packages (release.yml / npm-release-promote.yml).
+      - name: Tag and draft-release packaged VSIX
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EXTENSION_VERSION: ${{ inputs.version }}
+        run: |
+          tag="vscode-extension-v${EXTENSION_VERSION}"
+          if git rev-parse "$tag" >/dev/null 2>&1; then
+            echo "::error::Tag $tag already exists"
+            exit 1
+          fi
+          git tag "$tag"
+          git push origin "$tag"
+          notes=$(printf '📦 **Packaged** — pending Marketplace publish approval.\n\n- Extension: `maximinion.maximinion@%s`\n- Provenance: verify the attached VSIX with `gh attestation verify <file> -R %s`\n- Workflow run: %s/%s/actions/runs/%s' \
+            "$EXTENSION_VERSION" "$GITHUB_REPOSITORY" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID")
+          gh release create "$tag" packages/vscode-extension/*.vsix \
+            --title "MaxiMinion VS Code Extension v${EXTENSION_VERSION}" \
+            --notes "$notes" \
+            --prerelease
+
   publish:
     needs: package
     if: ${{ inputs.publish && github.actor == 'dev-rb-hub' && github.triggering_actor == 'dev-rb-hub' && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     environment: vscode-marketplace
     permissions:
-      contents: read
+      contents: write
       deployments: write
     timeout-minutes: 15
     steps:
@@ -100,3 +123,14 @@ jobs:
             exit 1
           fi
           npx vsce publish --packagePath "release-artifacts/maximinion-$EXTENSION_VERSION.vsix" --no-dependencies
+
+      # Flips the prerelease created by the package job to a full release,
+      # so the GitHub Release status always reflects Marketplace truth.
+      - name: Promote GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EXTENSION_VERSION: ${{ inputs.version }}
+        run: |
+          tag="vscode-extension-v${EXTENSION_VERSION}"
+          notes=$(printf '✅ **Published** to the Visual Studio Marketplace.\n\n- https://marketplace.visualstudio.com/items?itemName=maximinion.maximinion\n- Version: %s' "$EXTENSION_VERSION")
+          gh release edit "$tag" --prerelease=false --notes "$notes"
