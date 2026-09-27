@@ -15,6 +15,7 @@
     "type": "git",
     "url": "https://github.com/dev-rb-hub/maximinion-ce"
   },
+  "icon": "media/icon.png",
   "engines": {
     "vscode": "^1.74.0"
   },
