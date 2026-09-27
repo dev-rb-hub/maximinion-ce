@@ -96,7 +96,7 @@ jobs:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
         run: |
           if [[ -z "$VSCE_PAT" ]]; then
-            echo "::error::Configure the VSCE_PAT repository secret before publishing"
+            echo "::error::Configure the VSCE_PAT secret on the vscode-marketplace environment before publishing"
             exit 1
           fi
           npx vsce publish --packagePath "release-artifacts/maximinion-$EXTENSION_VERSION.vsix" --no-dependencies
