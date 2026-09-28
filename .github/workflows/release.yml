@@ -26,7 +26,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           # npm stage / trusted publishing require npm CLI >=11.5.1, which
           # needs Node >=22.14 (newer than the packages' own >=18 engines floor).
