@@ -221,6 +221,10 @@ npx @maximinion/proxy-transport --port 3000 --manifest ./MANIFEST.md
 - ✅ SSO/SAML, RBAC, SLA 99.9%
 - 📍 **For:** Fortune 500, regulated industries, large teams
 
+## Licensing & Compliance
+
+*"MaxiMinion.AI Community Edition is an independent, zero-cost tool provided strictly under the MIT License. The provision of this free tier does not constitute an operation in trade or commerce under the Australian Consumer Law (ACL), and the standard statutory consumer guarantees do not apply to this zero-cost release."*
+
 ---
 
 ## 🔒 Security & Compliance

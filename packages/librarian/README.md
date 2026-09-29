@@ -30,6 +30,10 @@ console.log(topNodes.map((n) => n.id));
 
 See [docs/API/librarian-api.md](../../docs/API/librarian-api.md) for extended reference.
 
+## Licensing & Compliance
+
+*"MaxiMinion.AI Community Edition is an independent, zero-cost tool provided strictly under the MIT License. The provision of this free tier does not constitute an operation in trade or commerce under the Australian Consumer Law (ACL), and the standard statutory consumer guarantees do not apply to this zero-cost release."*
+
 ## License
 
 MIT

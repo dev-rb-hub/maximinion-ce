@@ -25,3 +25,7 @@ Run Phase 1 (the Refiner) on the active editor document locally — secret scrub
 
 - Secret detection is pattern-based and cannot guarantee that every sensitive value is found. Review the output before sharing it.
 - The Refiner preview contains only the refined text (no report wrapper), so it can be copied straight into an LLM prompt with minimal token overhead. Full run details are in the **MaxiMinion** output channel.
+
+## Licensing & Compliance
+
+*"MaxiMinion.AI Community Edition is an independent, zero-cost tool provided strictly under the MIT License. The provision of this free tier does not constitute an operation in trade or commerce under the Australian Consumer Law (ACL), and the standard statutory consumer guarantees do not apply to this zero-cost release."*
