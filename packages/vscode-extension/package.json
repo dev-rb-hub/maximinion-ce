@@ -2,7 +2,7 @@
   "name": "maximinion",
   "displayName": "MaxiMinion",
   "description": "Sanitize secrets from the active editor without changing the source file.",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "publisher": "maximinion",
   "private": true,
   "license": "MIT",
@@ -129,7 +129,7 @@
     "dev": "npm run build && code --extensionDevelopmentPath=%cd% --new-window"
   },
   "devDependencies": {
-    "@maximinion/refiner": "^0.1.1",
+    "@maximinion/refiner": "^0.2.0",
     "@types/vscode": "^1.74.0",
     "@types/jest": "^29.5.0",
     "@vscode/vsce": "^3.6.0",
