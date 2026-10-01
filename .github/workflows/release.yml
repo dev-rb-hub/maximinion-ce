@@ -64,7 +64,7 @@ jobs:
               echo "STAGED $workspace $version" >> /tmp/stage-results.txt
             else
               echo "$output"
-              if echo "$output" | grep -q "Cannot stage previously published version"; then
+              if echo "$output" | grep -qiE "cannot stage previously published version|cannot publish over the previously published version"; then
                 echo "::warning::$workspace version already staged or published; skipping."
                 echo "SKIPPED $workspace $version" >> /tmp/stage-results.txt
               else

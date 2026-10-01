@@ -1,6 +1,6 @@
 {
   "name": "@maximinion/manifest-generator",
-  "version": "0.3.2",
+  "version": "0.4.0",
   "description": "Phase 3: The Manifest Generator - Hierarchical codebase manifest generation with cross-reference resolution",
   "main": "dist/core/manifest-generator/index.js",
   "types": "dist/core/manifest-generator/index.d.ts",
@@ -19,8 +19,8 @@
   "author": "Maximinion AI",
   "license": "MIT",
   "dependencies": {
-    "@maximinion/refiner": "^0.1.0",
-    "@maximinion/librarian": "^0.2.0"
+    "@maximinion/refiner": "^0.2.0",
+    "@maximinion/librarian": "^0.3.0"
   },
   "devDependencies": {
     "@types/jest": "^29.5.0",

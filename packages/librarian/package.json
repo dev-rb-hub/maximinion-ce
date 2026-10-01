@@ -1,6 +1,6 @@
 {
   "name": "@maximinion/librarian",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "description": "Phase 2: The Librarian - Dependency Graph Analysis & Centrality Scoring",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -34,7 +34,7 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "@maximinion/refiner": "^0.1.0"
+    "@maximinion/refiner": "^0.2.0"
   },
   "devDependencies": {
     "@types/jest": "^29.5.0",
