@@ -54,7 +54,7 @@ jobs:
           npx vsce package "$EXTENSION_VERSION" --no-dependencies --no-git-tag-version
 
       - name: Attest VSIX build provenance
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@v4
         with:
           subject-path: packages/vscode-extension/*.vsix
 
