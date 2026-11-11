@@ -54,3 +54,13 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: actions/dependency-review-action@v5
+        with:
+          # Workspace packages appear in package-lock.json by path and have no
+          # registry license metadata, so they would otherwise be reported as
+          # "unknown license". They are all MIT (see packages/*/LICENSE).
+          allow-dependencies-licenses: >-
+            pkg:npm/packages/vscode-extension,
+            pkg:npm/packages/refiner,
+            pkg:npm/packages/librarian,
+            pkg:npm/packages/manifest-generator,
+            pkg:npm/packages/proxy-transport

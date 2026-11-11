@@ -33,6 +33,15 @@
   ],
   "author": "",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dev-rb-hub/maximinion-ce.git",
+    "directory": "packages/librarian"
+  },
+  "homepage": "https://github.com/dev-rb-hub/maximinion-ce/tree/main/packages/librarian#readme",
+  "bugs": {
+    "url": "https://github.com/dev-rb-hub/maximinion-ce/issues"
+  },
   "dependencies": {
     "@maximinion/refiner": "^0.2.0"
   },
