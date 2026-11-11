@@ -49,7 +49,7 @@ The Refiner is the analysis pipeline behind **Run Refiner on Active File (Signal
 
 1. **Secret scrubbing:** likely secrets are replaced with `[REDACTED_…]`.
 2. **Entropy scoring:** Shannon entropy measures information density. `HIGH` means dense, varied content (usually real logic). `LOW` means repetitive content such as imports, generated code, or long comment blocks, which is a good candidate to trim.
-3. **Semantic folding** (optional, off by default): a local [Ollama](https://ollama.com) model summarizes the code. The summary is lossy, so review it. To enable it, start Ollama (`ollama serve`), install a model (`ollama pull phi3`, or use one from `ollama list`), turn on `maximinion.semanticFolding.enabled`, and set `maximinion.semanticFolding.model` if you're not using `phi3`. If Ollama or the model is missing, the Refiner explains why and offers to switch to an installed model. Folding shows a progress notification that you can cancel.
+3. **Semantic folding** (optional, off by default): a local [Ollama](https://ollama.com) model summarizes the code. The summary is lossy, so review it. To enable it, start Ollama (`ollama serve`), install a model (`ollama pull phi3`, or use one from `ollama list`), turn on `maximinion.semanticFolding.enabled`, and set `maximinion.semanticFolding.model` if you're not using `phi3`. Run **MaxiMinion: Test Semantic Folding Setup (Ollama)** (also in the sidebar and linked from the setting) to check that Ollama is reachable and the model is installed, and to time a sample fold. Turning folding on, or changing its model, runs the same check; if it fails, folding is turned off again and you're told how to fix it. The sidebar shows whether folding is ready. Folding shows a progress notification that you can cancel.
 
 The refined text opens in a preview tab, and your file is not changed. A report with a plain-English explanation of each step is written to **View → Output → MaxiMinion**.
 
@@ -62,6 +62,7 @@ All commands are in the Command Palette under **MaxiMinion:**.
 - `Copy Sanitized File (Plain Text)`: copies the redacted text with no labels or fences.
 - `Run Refiner on Active File (Signal Report)`: see [The Refiner](#the-refiner).
 - `Open Settings`: opens the MaxiMinion settings.
+- `Test Semantic Folding Setup (Ollama)`: checks that Ollama is reachable and the folding model is installed, then times a sample fold.
 - `Get Started & Help`: opens the walkthrough.
 
 ## Settings

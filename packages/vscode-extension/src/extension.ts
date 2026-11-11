@@ -216,10 +216,185 @@ function createRunRefinerOnActiveDocument(
 }
 
 const OLLAMA_URL = 'http://localhost:11434';
+const SAMPLE_CODE = 'function add(a: number, b: number): number {\n  return a + b;\n}\n';
+
+type FoldingCheck =
+  | { ok: true; model: string; installed: string[] }
+  | { ok: false; reason: 'unreachable' | 'model-missing'; model: string; installed: string[]; message: string };
+
+type FoldingStatus = { state: 'off' | 'checking' | 'ready' | 'not-ready'; detail: string };
+
+let foldingStatus: FoldingStatus = { state: 'off', detail: '' };
+const foldingStatusListeners = new Set<() => void>();
+let foldingCheckTimer: ReturnType<typeof setTimeout> | undefined;
+let foldingCheckRun = 0;
+
+function setFoldingStatus(status: FoldingStatus): void {
+  foldingStatus = status;
+  foldingStatusListeners.forEach((listener) => listener());
+}
+
+function foldingModel(): string {
+  return getConfig().get<string>('semanticFolding.model', 'phi3').trim() || 'phi3';
+}
+
+/** Basic setup check: Ollama is reachable and the model is installed. Does not run the model. */
+async function checkFoldingSetup(model: string): Promise<FoldingCheck> {
+  let installed: string[];
+  try {
+    installed = (await new Refiner({ ollamaModel: model }).listOllamaModels()).map((m) => m.name);
+  } catch {
+    return {
+      ok: false,
+      reason: 'unreachable',
+      model,
+      installed: [],
+      message: `Ollama is not running at ${OLLAMA_URL}.`,
+    };
+  }
+  if (!installed.some((name) => sameOllamaModel(name, model))) {
+    const available = installed.length > 0 ? installed.join(', ') : 'none';
+    return {
+      ok: false,
+      reason: 'model-missing',
+      model,
+      installed,
+      message: `Model "${model}" is not installed in Ollama (installed: ${available}).`,
+    };
+  }
+  return { ok: true, model, installed };
+}
 
 async function setFoldingModel(model: string): Promise<void> {
   await getConfig().update('semanticFolding.model', model, vscode.ConfigurationTarget.Global);
-  void info(`Semantic folding model set to "${model}". Run the Refiner again to fold with it.`);
+  if (!getConfig().get<boolean>('semanticFolding.enabled', false)) {
+    void info(`Semantic folding model set to "${model}".`);
+  }
+}
+
+/** Shows a failed check with the actions that fix it. */
+function offerFoldingFix(check: Extract<FoldingCheck, { ok: false }>, prefix: string): void {
+  const actions =
+    check.reason === 'unreachable'
+      ? ['Install Ollama', 'Test Again']
+      : check.installed.length > 0
+        ? [`Use ${check.installed[0]}`, 'Choose Model', 'Test Again']
+        : ['Browse Models', 'Test Again'];
+
+  void warn(`${prefix} ${check.message}`, ...actions).then(async (choice) => {
+    if (choice === 'Install Ollama') {
+      void vscode.env.openExternal(vscode.Uri.parse('https://ollama.com/download'));
+    } else if (choice === 'Browse Models') {
+      void vscode.env.openExternal(vscode.Uri.parse('https://ollama.com/library'));
+    } else if (choice === 'Test Again') {
+      void vscode.commands.executeCommand('maximinion.testSemanticFolding');
+    } else if (choice === `Use ${check.installed[0]}`) {
+      await setFoldingModel(check.installed[0]);
+    } else if (choice === 'Choose Model') {
+      const picked = await vscode.window.showQuickPick(check.installed, {
+        title: 'MaxiMinion: choose an Ollama model for semantic folding',
+        placeHolder: 'Installed Ollama models',
+      });
+      if (picked) await setFoldingModel(picked);
+    }
+  });
+}
+
+/** Turns semantic folding off in every settings scope where it is on. */
+async function disableFolding(): Promise<void> {
+  const inspected = getConfig().inspect<boolean>('semanticFolding.enabled');
+  if (inspected?.workspaceValue === true) {
+    await getConfig().update('semanticFolding.enabled', false, vscode.ConfigurationTarget.Workspace);
+  }
+  if (inspected?.globalValue === true || inspected?.workspaceValue !== true) {
+    await getConfig().update('semanticFolding.enabled', false, vscode.ConfigurationTarget.Global);
+  }
+}
+
+/**
+ * Runs the basic setup check. With `enforce`, a failing check turns folding off again and explains why;
+ * otherwise (e.g. at startup, when Ollama may not be started yet) it only updates the sidebar status.
+ */
+async function refreshFoldingStatus(enforce: boolean): Promise<void> {
+  const run = ++foldingCheckRun;
+  if (!getConfig().get<boolean>('semanticFolding.enabled', false)) {
+    // Keep the last failure visible after folding is turned off because of it.
+    setFoldingStatus({ state: 'off', detail: foldingStatus.state === 'not-ready' ? foldingStatus.detail : '' });
+    return;
+  }
+  const model = foldingModel();
+  setFoldingStatus({ state: 'checking', detail: `Checking Ollama and ${model}…` });
+  const check = await checkFoldingSetup(model);
+  if (run !== foldingCheckRun) return;
+
+  if (check.ok) {
+    setFoldingStatus({ state: 'ready', detail: `Ollama is running and ${model} is installed.` });
+    if (enforce) void info(`Semantic folding is ready: Ollama is running and "${model}" is installed.`);
+    return;
+  }
+
+  setFoldingStatus({ state: 'not-ready', detail: check.message });
+  if (enforce) {
+    await disableFolding();
+    offerFoldingFix(check, 'Semantic folding was turned off because the setup check failed:');
+  }
+}
+
+function scheduleFoldingEnforcement(): void {
+  clearTimeout(foldingCheckTimer);
+  // Debounced so typing a model name in the Settings editor does not run a check per keystroke.
+  foldingCheckTimer = setTimeout(() => void refreshFoldingStatus(true), 600);
+}
+
+/** Full test: setup check plus a timed sample fold. Works whether or not folding is enabled. */
+async function testSemanticFolding(): Promise<void> {
+  const model = foldingModel();
+  const result = await vscode.window.withProgress(
+    {
+      location: vscode.ProgressLocation.Notification,
+      title: `MaxiMinion: Testing semantic folding with ${model}…`,
+      cancellable: true,
+    },
+    async (_progress, token) => {
+      const check = await checkFoldingSetup(model);
+      if (!check.ok) return { check };
+      const controller = new AbortController();
+      token.onCancellationRequested(() => controller.abort());
+      const started = Date.now();
+      const folded = await new Refiner({ ollamaModel: model, cacheFoldedSummaries: false }).fold(
+        SAMPLE_CODE,
+        controller.signal,
+      );
+      return { check, folded, ms: Date.now() - started, cancelled: controller.signal.aborted };
+    },
+  );
+
+  if (!result.check.ok) {
+    setFoldingStatus({ state: 'not-ready', detail: result.check.message });
+    offerFoldingFix(result.check, 'Semantic folding test failed:');
+    return;
+  }
+  if (result.cancelled) return;
+  if (!result.folded || result.folded.error) {
+    const detail = result.folded?.error ?? 'no response';
+    setFoldingStatus({ state: 'not-ready', detail: `Sample fold failed: ${detail}` });
+    void warn(`Semantic folding test failed: Ollama and "${model}" are available, but the sample fold failed (${detail}).`);
+    return;
+  }
+
+  const enabled = getConfig().get<boolean>('semanticFolding.enabled', false);
+  if (enabled) {
+    setFoldingStatus({ state: 'ready', detail: `Ollama is running and ${model} is installed.` });
+  }
+  const seconds = ((result.ms ?? 0) / 1000).toFixed(1);
+  void info(
+    `Semantic folding test passed: "${model}" summarized a sample function in ${seconds}s: ${result.folded.summary}`,
+    ...(enabled ? [] : ['Turn On Folding']),
+  ).then((choice) => {
+    if (choice === 'Turn On Folding') {
+      void getConfig().update('semanticFolding.enabled', true, vscode.ConfigurationTarget.Global);
+    }
+  });
 }
 
 /**
@@ -232,44 +407,16 @@ async function runSemanticFolding(
   model: string,
   output: vscode.OutputChannel,
 ): Promise<{ summary: string; tokensSaved: number } | undefined> {
-  let installed: string[];
-  try {
-    installed = (await refiner.listOllamaModels()).map((m) => m.name);
-  } catch (error) {
-    output.appendLine(`Semantic folding: failed (Ollama is not reachable at ${OLLAMA_URL})`);
-    output.appendLine('  -> Install Ollama from https://ollama.com and start it with `ollama serve`.');
-    void warn(`Semantic folding skipped: Ollama is not running at ${OLLAMA_URL}.`, 'Install Ollama', 'Turn Off Folding').then(
-      (choice) => {
-        if (choice === 'Install Ollama') {
-          void vscode.env.openExternal(vscode.Uri.parse('https://ollama.com/download'));
-        } else if (choice === 'Turn Off Folding') {
-          void getConfig().update('semanticFolding.enabled', false, vscode.ConfigurationTarget.Global);
-        }
-      },
+  const check = await checkFoldingSetup(model);
+  if (!check.ok) {
+    output.appendLine(`Semantic folding: failed (${check.message})`);
+    output.appendLine(
+      check.reason === 'unreachable'
+        ? '  -> Install Ollama from https://ollama.com and start it with `ollama serve`.'
+        : `  -> Run \`ollama pull ${model}\`, or set maximinion.semanticFolding.model to an installed model.`,
     );
-    return undefined;
-  }
-
-  if (!installed.some((name) => sameOllamaModel(name, model))) {
-    const available = installed.length > 0 ? installed.join(', ') : 'none';
-    output.appendLine(`Semantic folding: failed (model "${model}" is not installed; installed models: ${available})`);
-    output.appendLine(`  -> Run \`ollama pull ${model}\`, or set maximinion.semanticFolding.model to an installed model.`);
-    const useInstalled = installed.length > 0 ? `Use ${installed[0]}` : undefined;
-    const actions = [useInstalled, 'Choose Model'].filter((a): a is string => Boolean(a));
-    void warn(
-      `Semantic folding skipped: model "${model}" is not installed in Ollama (installed: ${available}).`,
-      ...actions,
-    ).then(async (choice) => {
-      if (choice === useInstalled && useInstalled) {
-        await setFoldingModel(installed[0]);
-      } else if (choice === 'Choose Model') {
-        const picked = await vscode.window.showQuickPick(installed, {
-          title: 'MaxiMinion: choose an Ollama model for semantic folding',
-          placeHolder: installed.length > 0 ? 'Installed Ollama models' : `No models installed. Run "ollama pull ${model}" first.`,
-        });
-        if (picked) await setFoldingModel(picked);
-      }
-    });
+    setFoldingStatus({ state: 'not-ready', detail: check.message });
+    offerFoldingFix(check, 'Semantic folding skipped:');
     return undefined;
   }
 
@@ -527,6 +674,20 @@ function showNoticeOnce(context: vscode.ExtensionContext): void {
   );
 }
 
+function describeFoldingStatus(enabled: boolean): string {
+  switch (foldingStatus.state) {
+    case 'ready':
+      return `✓ ready. ${foldingStatus.detail}`;
+    case 'checking':
+      return `checking… ${foldingStatus.detail}`;
+    case 'not-ready':
+      return `✗ not ready. ${foldingStatus.detail}`;
+    default:
+      if (enabled) return 'on (not checked yet)';
+      return foldingStatus.detail ? `off. Last check failed: ${foldingStatus.detail}` : 'off. Test the setup before turning it on.';
+  }
+}
+
 function escapeHtml(value: string): string {
   return value.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 }
@@ -552,7 +713,14 @@ class MaximinionSidebarProvider implements vscode.WebviewViewProvider {
         webviewView.webview.html = this.getHtml();
       }
     });
-    webviewView.onDidDispose(() => configListener.dispose());
+    const rerender = () => {
+      webviewView.webview.html = this.getHtml();
+    };
+    foldingStatusListeners.add(rerender);
+    webviewView.onDidDispose(() => {
+      configListener.dispose();
+      foldingStatusListeners.delete(rerender);
+    });
 
     webviewView.webview.onDidReceiveMessage((message: { command?: string }) => {
       const commands: Record<string, string> = {
@@ -562,6 +730,7 @@ class MaximinionSidebarProvider implements vscode.WebviewViewProvider {
         openSettings: 'maximinion.openSettings',
         showHelp: 'maximinion.showHelp',
         showProblems: 'workbench.actions.view.problems',
+        testFolding: 'maximinion.testSemanticFolding',
       };
       if (message.command === 'openDocs') {
         void vscode.env.openExternal(vscode.Uri.parse(HELP_URL));
@@ -612,6 +781,8 @@ class MaximinionSidebarProvider implements vscode.WebviewViewProvider {
   <h3>Analyze a file</h3>
   <p class="hint">The Refiner scores how much real signal a file has (entropy) and can summarize it with a local Ollama model. Use it on large files before sharing.</p>
   <button class="secondary" data-command="runRefiner">Run Refiner on Active File</button>
+  <p class="hint">Semantic folding (local Ollama): ${escapeHtml(describeFoldingStatus(semanticFoldingEnabled))}</p>
+  <button class="secondary" data-command="testFolding">Test Folding Setup</button>
 
   <h3>Secret warnings</h3>
   <p class="hint">Likely secrets are underlined and listed in the Problems panel as <b>MaxiMinion</b>. Press Ctrl+. on one to redact it.</p>
@@ -673,7 +844,12 @@ export function activate(context: vscode.ExtensionContext): void {
         statusBar.update();
         diagnostics.refreshAll();
       }
+      if (event.affectsConfiguration('maximinion.semanticFolding')) {
+        scheduleFoldingEnforcement();
+      }
     }),
+    { dispose: () => clearTimeout(foldingCheckTimer) },
+    vscode.commands.registerCommand('maximinion.testSemanticFolding', testSemanticFolding),
     vscode.commands.registerCommand('maximinion.copyForAI', copyForAI),
     vscode.window.registerWebviewViewProvider(MaximinionSidebarProvider.viewType, new MaximinionSidebarProvider()),
     vscode.commands.registerCommand('maximinion.sanitizeActiveFile', async () => {
@@ -698,5 +874,6 @@ export function activate(context: vscode.ExtensionContext): void {
 
   diagnostics.refreshAll();
   statusBar.update();
+  void refreshFoldingStatus(false);
   showNoticeOnce(context);
 }

@@ -33,6 +33,9 @@ const statusBarItem = {
   dispose: jest.fn(),
 };
 const disposable = () => ({ dispose: jest.fn() });
+const configUpdate = jest.fn(async (key: string, value: unknown) => {
+  configValues[key] = value;
+});
 
 class MockWorkspaceEdit {
   public replacements: Array<{ uri: unknown; range: unknown; text: string }> = [];
@@ -108,6 +111,8 @@ const mockVscode = {
     openTextDocument: jest.fn(),
     getConfiguration: jest.fn(() => ({
       get: jest.fn((key: string, defaultValue: unknown) => configValues[key] ?? defaultValue),
+      inspect: jest.fn((key: string) => ({ key, globalValue: configValues[key] })),
+      update: configUpdate,
     })),
     onDidChangeConfiguration: jest.fn(disposable),
     onDidOpenTextDocument: jest.fn(disposable),
@@ -506,9 +511,10 @@ describe('MaxiMinion VS Code commands', () => {
 
       expect(generateCalls).toBe(0);
       expect(mockVscode.window.showWarningMessage).toHaveBeenCalledWith(
-        'MaxiMinion: Semantic folding skipped: model "phi3" is not installed in Ollama (installed: gemma4:26b).',
+        'MaxiMinion: Semantic folding skipped: Model "phi3" is not installed in Ollama (installed: gemma4:26b).',
         'Use gemma4:26b',
         'Choose Model',
+        'Test Again',
       );
       expect(outputLines()).not.toContainEqual(expect.stringContaining('Semantic folding: applied'));
       expect(mockVscode.workspace.openTextDocument).toHaveBeenCalledWith({
@@ -525,7 +531,7 @@ describe('MaxiMinion VS Code commands', () => {
       expect(mockVscode.window.showWarningMessage).toHaveBeenCalledWith(
         'MaxiMinion: Semantic folding skipped: Ollama is not running at http://localhost:11434.',
         'Install Ollama',
-        'Turn Off Folding',
+        'Test Again',
       );
       expect(mockVscode.window.withProgress).not.toHaveBeenCalled();
     });
@@ -536,6 +542,81 @@ describe('MaxiMinion VS Code commands', () => {
       await commandHandlers.get('maximinion.runRefinerOnActiveFile')!();
 
       expect(generateCalls).toBe(1);
+    });
+
+    describe('setup check', () => {
+      const changeFoldingSetting = async () => {
+        const configCallback = (mockVscode.workspace.onDidChangeConfiguration.mock.calls as any[])[0][0];
+        configCallback({ affectsConfiguration: (section: string) => section.startsWith('maximinion') });
+        await new Promise((resolve) => setTimeout(resolve, 700)); // debounce + async check
+      };
+
+      test('turning folding on with a missing model turns it off again and explains why', async () => {
+        mockOllama({ models: ['gemma4:26b'] });
+
+        await changeFoldingSetting();
+
+        expect(configUpdate).toHaveBeenCalledWith('semanticFolding.enabled', false, mockVscode.ConfigurationTarget.Global);
+        expect(configValues['semanticFolding.enabled']).toBe(false);
+        expect(mockVscode.window.showWarningMessage).toHaveBeenCalledWith(
+          'MaxiMinion: Semantic folding was turned off because the setup check failed: Model "phi3" is not installed in Ollama (installed: gemma4:26b).',
+          'Use gemma4:26b',
+          'Choose Model',
+          'Test Again',
+        );
+      });
+
+      test('turning folding on when Ollama is not running turns it off again', async () => {
+        mockOllama({ reachable: false });
+
+        await changeFoldingSetting();
+
+        expect(configValues['semanticFolding.enabled']).toBe(false);
+        expect(mockVscode.window.showWarningMessage).toHaveBeenCalledWith(
+          expect.stringContaining('Ollama is not running'),
+          'Install Ollama',
+          'Test Again',
+        );
+      });
+
+      test('turning folding on with a working setup keeps it on and confirms', async () => {
+        configValues['semanticFolding.model'] = 'gemma4:26b';
+        mockOllama({ models: ['gemma4:26b'] });
+
+        await changeFoldingSetting();
+
+        expect(configValues['semanticFolding.enabled']).toBe(true);
+        expect(configUpdate).not.toHaveBeenCalled();
+        expect(mockVscode.window.showInformationMessage).toHaveBeenCalledWith(
+          'MaxiMinion: Semantic folding is ready: Ollama is running and "gemma4:26b" is installed.',
+        );
+      });
+
+      test('Test Setup runs a sample fold and offers to turn folding on', async () => {
+        configValues['semanticFolding.enabled'] = false;
+        configValues['semanticFolding.model'] = 'gemma4:26b';
+        mockOllama({ models: ['gemma4:26b'], summary: 'Adds two numbers.' });
+
+        await commandHandlers.get('maximinion.testSemanticFolding')!();
+
+        expect(generateCalls).toBe(1);
+        expect(mockVscode.window.showInformationMessage).toHaveBeenCalledWith(
+          expect.stringMatching(/^MaxiMinion: Semantic folding test passed: "gemma4:26b" summarized a sample function in \d+\.\ds: # Adds two numbers\.$/),
+          'Turn On Folding',
+        );
+      });
+
+      test('the sidebar shows readiness and a Test Folding Setup button', async () => {
+        mockOllama({ reachable: false });
+        await commandHandlers.get('maximinion.testSemanticFolding')!();
+        const provider = (mockVscode.window.registerWebviewViewProvider.mock.calls as any[])[0][1];
+        const view = { webview: { options: undefined as unknown, html: '', onDidReceiveMessage: jest.fn() }, onDidDispose: jest.fn() };
+
+        provider.resolveWebviewView(view);
+
+        expect(view.webview.html).toContain('✗ not ready. Ollama is not running at http://localhost:11434.');
+        expect(view.webview.html).toContain('data-command="testFolding"');
+      });
     });
   });
 
