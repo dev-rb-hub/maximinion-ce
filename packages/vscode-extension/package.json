@@ -41,17 +41,17 @@
       },
       {
         "command": "maximinion.sanitizeActiveFile",
-        "title": "Sanitize Active File",
+        "title": "Preview Sanitized File",
         "category": "MaxiMinion"
       },
       {
         "command": "maximinion.copySanitizedActiveFile",
-        "title": "Copy Sanitized Active File",
+        "title": "Copy Sanitized File (Plain Text)",
         "category": "MaxiMinion"
       },
       {
         "command": "maximinion.runRefinerOnActiveFile",
-        "title": "Run Refiner on Active File",
+        "title": "Run Refiner on Active File (Signal Report)",
         "category": "MaxiMinion"
       },
       {
@@ -59,43 +59,138 @@
         "title": "Open Settings",
         "category": "MaxiMinion",
         "icon": "$(gear)"
+      },
+      {
+        "command": "maximinion.showHelp",
+        "title": "Get Started & Help",
+        "category": "MaxiMinion",
+        "icon": "$(question)"
+      }
+    ],
+    "submenus": [
+      {
+        "id": "maximinion.editorMenu",
+        "label": "MaxiMinion",
+        "icon": {
+          "light": "media/menu-light.svg",
+          "dark": "media/menu-dark.svg"
+        }
+      },
+      {
+        "id": "maximinion.explorerMenu",
+        "label": "MaxiMinion"
       }
     ],
     "menus": {
-      "editor/title": [
+      "maximinion.editorMenu": [
+        {
+          "command": "maximinion.copyForAI",
+          "group": "1_copy@1"
+        },
+        {
+          "command": "maximinion.copySanitizedActiveFile",
+          "group": "1_copy@2"
+        },
         {
           "command": "maximinion.sanitizeActiveFile",
-          "when": "editorTextFocus",
-          "group": "navigation"
+          "group": "2_preview@1"
+        },
+        {
+          "command": "maximinion.runRefinerOnActiveFile",
+          "group": "2_preview@2"
+        },
+        {
+          "command": "maximinion.showHelp",
+          "group": "9_help@1"
+        }
+      ],
+      "maximinion.explorerMenu": [
+        {
+          "command": "maximinion.copyForAI",
+          "group": "1_copy@1"
+        },
+        {
+          "command": "maximinion.showHelp",
+          "group": "9_help@1"
+        }
+      ],
+      "editor/title": [
+        {
+          "submenu": "maximinion.editorMenu",
+          "when": "resourceScheme == file || resourceScheme == untitled",
+          "group": "navigation@99"
         }
       ],
       "editor/context": [
         {
-          "command": "maximinion.copyForAI",
-          "when": "editorTextFocus",
+          "submenu": "maximinion.editorMenu",
           "group": "9_cutcopypaste@99"
-        },
-        {
-          "command": "maximinion.copySanitizedActiveFile",
-          "when": "editorTextFocus",
-          "group": "1_modification"
         }
       ],
       "explorer/context": [
         {
-          "command": "maximinion.copyForAI",
+          "submenu": "maximinion.explorerMenu",
           "when": "!explorerResourceIsFolder",
           "group": "6_copypath@99"
         }
       ],
       "view/title": [
         {
+          "command": "maximinion.showHelp",
+          "when": "view == maximinion.sidebar",
+          "group": "navigation@1"
+        },
+        {
           "command": "maximinion.openSettings",
           "when": "view == maximinion.sidebar",
-          "group": "navigation"
+          "group": "navigation@2"
         }
       ]
     },
+    "walkthroughs": [
+      {
+        "id": "gettingStarted",
+        "title": "Get Started with MaxiMinion",
+        "description": "Share code with AI assistants without leaking secrets or wasting tokens.",
+        "steps": [
+          {
+            "id": "copyForAI",
+            "title": "Copy code for an AI chat",
+            "description": "Use **Copy for AI** whenever you paste code into ChatGPT, Copilot Chat, Claude, or any LLM. It redacts likely secrets, compacts whitespace, labels each file, and tells you the estimated token count.\n[Copy for AI](command:maximinion.copyForAI)",
+            "media": { "markdown": "media/walkthrough/copy-for-ai.md" },
+            "completionEvents": ["onCommand:maximinion.copyForAI"]
+          },
+          {
+            "id": "secretWarnings",
+            "title": "Catch secrets while you edit",
+            "description": "Likely secrets are underlined and listed in the **Problems** panel with the source **MaxiMinion**. Use the lightbulb (Ctrl+.) to redact a value in place.\n[Open Problems Panel](command:workbench.actions.view.problems)",
+            "media": { "markdown": "media/walkthrough/secret-warnings.md" },
+            "completionEvents": ["onCommand:workbench.actions.view.problems"]
+          },
+          {
+            "id": "tokenBudget",
+            "title": "Watch your token budget",
+            "description": "The **shield** in the status bar shows the estimated tokens for the current file or selection and turns amber when it exceeds your budget.\n[Set Token Budget](command:workbench.action.openSettings?%5B%22maximinion.tokenBudget%22%5D)",
+            "media": { "markdown": "media/walkthrough/token-budget.md" },
+            "completionEvents": ["onSettingChanged:maximinion.tokenBudget"]
+          },
+          {
+            "id": "refiner",
+            "title": "Analyze a file with the Refiner",
+            "description": "The **Refiner** scrubs secrets, scores information density (entropy), and can optionally summarize code with a local Ollama model. Use it to judge whether a file is worth sending, or to shrink a large file.\n[Run Refiner on Active File](command:maximinion.runRefinerOnActiveFile)",
+            "media": { "markdown": "media/walkthrough/refiner.md" },
+            "completionEvents": ["onCommand:maximinion.runRefinerOnActiveFile"]
+          },
+          {
+            "id": "settings",
+            "title": "Tune MaxiMinion",
+            "description": "Adjust the token budget, warning sensitivity, whitespace compaction, and Refiner options. Every setting includes an explanation.\n[Open MaxiMinion Settings](command:maximinion.openSettings)",
+            "media": { "markdown": "media/walkthrough/settings.md" },
+            "completionEvents": ["onCommand:maximinion.openSettings"]
+          }
+        ]
+      }
+    ],
     "keybindings": [
       {
         "command": "maximinion.copyForAI",
@@ -122,60 +217,85 @@
         }
       ]
     },
-    "configuration": {
-      "title": "MaxiMinion",
-      "properties": {
-        "maximinion.secretScrubbing.enabled": {
-          "type": "boolean",
-          "default": true,
-          "description": "Enable secret scrubbing when running the Refiner on the active file."
-        },
-        "maximinion.entropyScoring.enabled": {
-          "type": "boolean",
-          "default": true,
-          "description": "Enable Shannon entropy scoring of the active file's content."
-        },
-        "maximinion.semanticFolding.enabled": {
-          "type": "boolean",
-          "default": false,
-          "description": "Enable semantic folding via a local Ollama instance (requires Ollama running at http://localhost:11434). Depends on entropy scoring being enabled."
-        },
-        "maximinion.manifest.exportFormat": {
-          "type": "string",
-          "enum": ["json", "markdown"],
-          "default": "json",
-          "description": "Export format used when generating manifests."
-        },
-        "maximinion.tokenBudget": {
-          "type": "number",
-          "default": 8000,
-          "minimum": 0,
-          "description": "Estimated token budget for Copy for AI and the status bar indicator. Set to 0 to disable budget warnings. Estimates use ~4 characters per token."
-        },
-        "maximinion.copyForAI.compactWhitespace": {
-          "type": "boolean",
-          "default": true,
-          "description": "Remove trailing whitespace (except in Markdown) and collapse repeated blank lines in Copy for AI output."
-        },
-        "maximinion.statusBar.enabled": {
-          "type": "boolean",
-          "default": true,
-          "description": "Show the estimated token count for the active file or selection in the status bar."
-        },
-        "maximinion.secretDiagnostics.enabled": {
-          "type": "boolean",
-          "default": true,
-          "description": "Show inline warnings for likely secrets in open files, with a quick fix to redact them."
-        },
-        "maximinion.secretDiagnostics.minConfidence": {
-          "type": "number",
-          "default": 0.75,
-          "minimum": 0,
-          "maximum": 1,
-          "description": "Minimum pattern confidence (0-1) for inline secret warnings. Raise it to reduce false positives."
+    "configuration": [
+      {
+        "title": "Copy for AI & Tokens",
+        "order": 1,
+        "properties": {
+          "maximinion.tokenBudget": {
+            "type": "number",
+            "default": 8000,
+            "minimum": 0,
+            "order": 1,
+            "markdownDescription": "Estimated token budget for **Copy for AI** and the status bar token counter. You are warned when a copy exceeds it, and the status bar turns amber. Set to `0` to disable budget warnings.\n\nEstimates use ~4 characters per token; actual counts vary by model. As a guide, many chat models handle 8k–32k tokens of pasted context comfortably."
+          },
+          "maximinion.copyForAI.compactWhitespace": {
+            "type": "boolean",
+            "default": true,
+            "order": 2,
+            "markdownDescription": "Trim trailing whitespace and collapse repeated blank lines in **Copy for AI** output to save tokens. Indentation is always preserved, and Markdown hard line breaks are kept."
+          },
+          "maximinion.statusBar.enabled": {
+            "type": "boolean",
+            "default": true,
+            "order": 3,
+            "markdownDescription": "Show the MaxiMinion token counter (`$(shield) ~N tokens`) in the status bar for the active file or selection. Click it to run **Copy for AI**."
+          }
+        }
+      },
+      {
+        "title": "Secret Protection",
+        "order": 2,
+        "properties": {
+          "maximinion.secretScrubbing.enabled": {
+            "type": "boolean",
+            "default": true,
+            "order": 1,
+            "markdownDescription": "Redact likely secrets (API keys, cloud credentials, tokens, private keys, connection strings, emails) as `[REDACTED_TYPE]` when using **Copy for AI**, **Preview Sanitized File**, **Copy Sanitized File**, and the **Refiner**. Your source file is never changed by these commands.\n\nDetection is pattern-based and not exhaustive — always review output before sharing."
+          },
+          "maximinion.secretDiagnostics.enabled": {
+            "type": "boolean",
+            "default": true,
+            "order": 2,
+            "markdownDescription": "Underline likely secrets in open files and list them in the **Problems** panel (source: `MaxiMinion`). Use the lightbulb quick fix **Redact with [REDACTED_…]** to replace a value in your file."
+          },
+          "maximinion.secretDiagnostics.minConfidence": {
+            "type": "number",
+            "default": 0.75,
+            "minimum": 0,
+            "maximum": 1,
+            "order": 3,
+            "markdownDescription": "How confident a pattern must be (0–1) before an inline warning is shown.\n\n- `0.9`+: only very specific formats (AWS, Azure, GitHub, Slack, and OpenAI keys, private keys, JWTs)\n- `0.75` (default): also generic `apiKey = \"…\"` assignments, database URLs with passwords, emails, and SSNs\n- `0.6`: also passwords, tokens, generic secrets, and card-like numbers (noisier)\n\nEnvironment variable references such as `process.env.API_KEY` are never flagged."
+          }
+        }
+      },
+      {
+        "title": "Refiner",
+        "order": 3,
+        "properties": {
+          "maximinion.entropyScoring.enabled": {
+            "type": "boolean",
+            "default": true,
+            "order": 1,
+            "markdownDescription": "Used by **Run Refiner on Active File**. Scores the file's information density with Shannon entropy (bits per character): `HIGH` means dense, varied content (real logic); `LOW` means repetitive or boilerplate content that is a good candidate to trim before sharing."
+          },
+          "maximinion.semanticFolding.enabled": {
+            "type": "boolean",
+            "default": false,
+            "order": 2,
+            "markdownDescription": "Used by **Run Refiner on Active File**. Summarizes the file with a local [Ollama](https://ollama.com) model at `http://localhost:11434` to cut tokens further. Lossy: review the summary before relying on it. Requires Ollama to be running and **Entropy Scoring** to be enabled. Code is never sent to a remote service."
+          },
+          "maximinion.manifest.exportFormat": {
+            "type": "string",
+            "enum": ["json", "markdown"],
+            "enumDescriptions": ["Machine-readable report.", "Human-readable report."],
+            "default": "json",
+            "order": 3,
+            "markdownDescription": "Format of the Refiner report written to the **MaxiMinion** output channel (View → Output → MaxiMinion)."
+          }
         }
       }
-    }
+    ]
   },
   "scripts": {
     "build": "esbuild src/extension.ts --bundle --platform=node --target=node20 --external:vscode --outfile=dist/extension.js",

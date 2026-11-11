@@ -10,6 +10,8 @@ export const CE_NOTICE =
 
 const NOTICE_STATE_KEY = 'maximinion.ceNoticeShown';
 const LICENSE_URL = 'https://github.com/dev-rb-hub/maximinion-ce/blob/main/LICENSE';
+export const HELP_URL = 'https://github.com/dev-rb-hub/maximinion-ce/blob/main/packages/vscode-extension/README.md';
+const WALKTHROUGH_ID = 'maximinion.maximinion#gettingStarted';
 const DIAGNOSTIC_SOURCE = 'MaxiMinion';
 const DIAGNOSTIC_SCHEMES = new Set(['file', 'untitled']);
 const MAX_DIAGNOSTIC_CHARS = 500_000;
@@ -18,10 +20,29 @@ function getConfig(): vscode.WorkspaceConfiguration {
   return vscode.workspace.getConfiguration('maximinion');
 }
 
+// Every notification is prefixed so users can tell which extension raised it.
+function info(message: string, ...actions: string[]): Thenable<string | undefined> {
+  return vscode.window.showInformationMessage(`MaxiMinion: ${message}`, ...actions);
+}
+
+function warn(message: string, ...actions: string[]): Thenable<string | undefined> {
+  return vscode.window.showWarningMessage(`MaxiMinion: ${message}`, ...actions);
+}
+
+function showHelp(step?: string): void {
+  void Promise.resolve(
+    vscode.commands.executeCommand(
+      'workbench.action.openWalkthrough',
+      step ? { category: WALKTHROUGH_ID, step: `${WALKTHROUGH_ID}#${step}` } : WALKTHROUGH_ID,
+      false,
+    ),
+  ).catch(() => vscode.env.openExternal(vscode.Uri.parse(HELP_URL)));
+}
+
 function sanitizeActiveDocument(): { text: string; count: number; language: string } | undefined {
   const editor = vscode.window.activeTextEditor;
   if (!editor) {
-    void vscode.window.showWarningMessage('Open a text document before sanitizing.');
+    void warn('Open a text document before sanitizing.');
     return undefined;
   }
 
@@ -50,7 +71,7 @@ async function showSanitizedPreview(
     language: result.language,
   });
   await vscode.window.showTextDocument(preview, { preview: true });
-  void vscode.window.showInformationMessage(message);
+  void info(message);
 }
 
 function formatRunReport(report: RunReport, format: string): string {
@@ -85,7 +106,7 @@ function createRunRefinerOnActiveDocument(
   return async () => {
     const editor = vscode.window.activeTextEditor;
     if (!editor) {
-      void vscode.window.showWarningMessage('Open a text document before running the Refiner.');
+      void warn('Open a text document before running the Refiner.');
       return;
     }
 
@@ -125,6 +146,7 @@ function createRunRefinerOnActiveDocument(
       output.appendLine(
         `Entropy scoring: value=${entropy.value.toFixed(2)}, rating=${entropy.rating}, signal=${entropy.signal.toFixed(2)}`,
       );
+      output.appendLine(`  -> ${describeSignal(entropy.rating)}`);
     } else {
       output.appendLine('Entropy scoring: skipped (disabled in settings)');
     }
@@ -132,7 +154,9 @@ function createRunRefinerOnActiveDocument(
     let foldedApplied = false;
     let foldedTokensSaved = 0;
     if (!semanticFoldingEnabled) {
-      output.appendLine('Semantic folding: skipped (disabled in settings)');
+      output.appendLine(
+        'Semantic folding: skipped (disabled; enable maximinion.semanticFolding.enabled and run Ollama locally to summarize code)',
+      );
     } else if (!entropy) {
       output.appendLine('Semantic folding: skipped (requires entropy scoring to be enabled)');
     } else {
@@ -146,6 +170,7 @@ function createRunRefinerOnActiveDocument(
         );
       } catch (error) {
         output.appendLine(`Semantic folding: failed (${error instanceof Error ? error.message : String(error)})`);
+        output.appendLine('  -> Is Ollama running at http://localhost:11434? Try `ollama serve` and `ollama pull phi3`.');
       }
     }
 
@@ -174,10 +199,35 @@ function createRunRefinerOnActiveDocument(
     });
     await vscode.window.showTextDocument(preview, { preview: true });
     output.show(true);
-    void vscode.window.showInformationMessage(
-      `Refiner complete. Redacted ${scrubbedCount} value(s). Optimization: ${optimizationPercent.toFixed(1)}%.`,
-    );
+    const signal = entropy ? `signal ${entropy.rating}, ` : '';
+    const sizeChange =
+      optimizationPercent >= 0
+        ? `${optimizationPercent.toFixed(1)}% smaller`
+        : `${Math.abs(optimizationPercent).toFixed(1)}% larger`;
+    void info(
+      `Refiner complete: ${signal}${scrubbedCount} value(s) redacted, ${sizeChange}. ` +
+        'The refined text is in the preview tab.',
+      'Show Report',
+      'What does this mean?',
+    ).then((choice) => {
+      if (choice === 'Show Report') {
+        output.show();
+      } else if (choice === 'What does this mean?') {
+        showHelp('refiner');
+      }
+    });
   };
+}
+
+function describeSignal(rating: string): string {
+  switch (rating) {
+    case 'HIGH':
+      return 'HIGH signal: dense, varied content (usually real logic worth sending to an AI).';
+    case 'LOW':
+      return 'LOW signal: repetitive or boilerplate content; consider trimming it before sharing.';
+    default:
+      return 'MEDIUM signal: a mix of logic and boilerplate.';
+  }
 }
 
 function labelFor(document: vscode.TextDocument): string {
@@ -200,7 +250,7 @@ async function collectPayloadSources(
 
   if (targets.length === 0 || targetsActiveEditor) {
     if (!editor) {
-      void vscode.window.showWarningMessage('Open a file or select files in the Explorer before using Copy for AI.');
+      void warn('Open a file or select files in the Explorer before using Copy for AI.');
       return undefined;
     }
     const { document, selection } = editor;
@@ -234,7 +284,7 @@ async function copyForAI(uri?: vscode.Uri, uris?: vscode.Uri[]): Promise<void> {
   const sources = await collectPayloadSources(uri, uris);
   if (!sources) return;
   if (sources.length === 0) {
-    void vscode.window.showWarningMessage('No readable text files were selected for Copy for AI.');
+    void warn('No readable text files were selected for Copy for AI.');
     return;
   }
 
@@ -252,9 +302,15 @@ async function copyForAI(uri?: vscode.Uri, uris?: vscode.Uri[]): Promise<void> {
     `~${formatTokens(result.originalTokens)} → ~${formatTokens(result.payloadTokens)} tokens.`;
   const budget = config.get<number>('tokenBudget', 8000);
   if (budget > 0 && result.payloadTokens > budget) {
-    void vscode.window.showWarningMessage(`${summary} This exceeds your token budget of ~${formatTokens(budget)}.`);
+    void warn(`${summary} This exceeds your token budget of ~${formatTokens(budget)}.`, 'Change Budget').then(
+      (choice) => {
+        if (choice === 'Change Budget') {
+          void vscode.commands.executeCommand('workbench.action.openSettings', 'maximinion.tokenBudget');
+        }
+      },
+    );
   } else {
-    void vscode.window.showInformationMessage(summary);
+    void info(summary);
   }
 }
 
@@ -281,8 +337,9 @@ class TokenStatusBar implements vscode.Disposable {
 
     this.item.text = `$(shield) ~${formatTokens(tokens)} tokens`;
     this.item.tooltip =
-      `MaxiMinion: estimated tokens for the current ${hasSelection ? 'selection' : 'file'}` +
-      `${budget > 0 ? ` (budget ~${formatTokens(budget)})` : ''}. Click to sanitize and copy for AI.`;
+      `MaxiMinion: ~${formatTokens(tokens)} estimated tokens in the current ${hasSelection ? 'selection' : 'file'}` +
+      `${budget > 0 ? ` (budget ~${formatTokens(budget)}${overBudget ? ', exceeded' : ''})` : ''}.\n` +
+      'Click to sanitize and copy for AI (Ctrl+Shift+Alt+M).';
     this.item.backgroundColor = overBudget ? new vscode.ThemeColor('statusBarItem.warningBackground') : undefined;
     this.item.show();
   }
@@ -313,11 +370,11 @@ class SecretDiagnostics implements vscode.CodeActionProvider, vscode.Disposable 
     const diagnostics = findSecretRanges(text, minConfidence).map((range) => {
       const diagnostic = new vscode.Diagnostic(
         new vscode.Range(document.positionAt(range.start), document.positionAt(range.end)),
-        `Possible ${range.type} detected. Review before sharing this file with AI tools.`,
+        `Possible secret (${range.type}). Redact it or use Copy for AI before sharing this file with AI tools.`,
         PII_TYPES.has(range.type) ? vscode.DiagnosticSeverity.Information : vscode.DiagnosticSeverity.Warning,
       );
       diagnostic.source = DIAGNOSTIC_SOURCE;
-      diagnostic.code = range.type;
+      diagnostic.code = { value: range.type, target: vscode.Uri.parse(`${HELP_URL}#inline-secret-warnings`) };
       return diagnostic;
     });
     this.collection.set(document.uri, diagnostics);
@@ -354,8 +411,9 @@ class SecretDiagnostics implements vscode.CodeActionProvider, vscode.Disposable 
     return context.diagnostics
       .filter((diagnostic) => diagnostic.source === DIAGNOSTIC_SOURCE)
       .map((diagnostic) => {
-        const replacement = `[REDACTED_${String(diagnostic.code)}]`;
-        const action = new vscode.CodeAction(`Redact with ${replacement}`, vscode.CodeActionKind.QuickFix);
+        const code = typeof diagnostic.code === 'object' ? diagnostic.code.value : diagnostic.code;
+        const replacement = `[REDACTED_${String(code)}]`;
+        const action = new vscode.CodeAction(`MaxiMinion: Redact with ${replacement}`, vscode.CodeActionKind.QuickFix);
         action.edit = new vscode.WorkspaceEdit();
         action.edit.replace(document.uri, diagnostic.range, replacement);
         action.diagnostics = [diagnostic];
@@ -374,11 +432,15 @@ class SecretDiagnostics implements vscode.CodeActionProvider, vscode.Disposable 
 function showNoticeOnce(context: vscode.ExtensionContext): void {
   if (context.globalState.get<boolean>(NOTICE_STATE_KEY)) return;
   void context.globalState.update(NOTICE_STATE_KEY, true);
-  void Promise.resolve(vscode.window.showInformationMessage(CE_NOTICE, 'OK', 'View License')).then((choice) => {
-    if (choice === 'View License') {
-      void vscode.env.openExternal(vscode.Uri.parse(LICENSE_URL));
-    }
-  });
+  void Promise.resolve(vscode.window.showInformationMessage(CE_NOTICE, 'Get Started', 'View License')).then(
+    (choice) => {
+      if (choice === 'Get Started') {
+        showHelp();
+      } else if (choice === 'View License') {
+        void vscode.env.openExternal(vscode.Uri.parse(LICENSE_URL));
+      }
+    },
+  );
 }
 
 function getNonce(): string {
@@ -405,12 +467,18 @@ class MaximinionSidebarProvider implements vscode.WebviewViewProvider {
     webviewView.onDidDispose(() => configListener.dispose());
 
     webviewView.webview.onDidReceiveMessage((message: { command?: string }) => {
-      if (message.command === 'copyForAI') {
-        void vscode.commands.executeCommand('maximinion.copyForAI');
-      } else if (message.command === 'runRefiner') {
-        void vscode.commands.executeCommand('maximinion.runRefinerOnActiveFile');
-      } else if (message.command === 'openSettings') {
-        void vscode.commands.executeCommand('maximinion.openSettings');
+      const commands: Record<string, string> = {
+        copyForAI: 'maximinion.copyForAI',
+        preview: 'maximinion.sanitizeActiveFile',
+        runRefiner: 'maximinion.runRefinerOnActiveFile',
+        openSettings: 'maximinion.openSettings',
+        showHelp: 'maximinion.showHelp',
+        showProblems: 'workbench.actions.view.problems',
+      };
+      if (message.command === 'openDocs') {
+        void vscode.env.openExternal(vscode.Uri.parse(HELP_URL));
+      } else if (message.command && commands[message.command]) {
+        void vscode.commands.executeCommand(commands[message.command]);
       }
     });
   }
@@ -423,6 +491,7 @@ class MaximinionSidebarProvider implements vscode.WebviewViewProvider {
     const exportFormat = config.get<string>('manifest.exportFormat', 'json');
     const tokenBudget = config.get<number>('tokenBudget', 8000);
     const diagnosticsEnabled = config.get<boolean>('secretDiagnostics.enabled', true);
+    const onOff = (value: boolean) => (value ? 'on' : 'off');
     const nonce = getNonce();
 
     return `<!DOCTYPE html>
@@ -430,31 +499,55 @@ class MaximinionSidebarProvider implements vscode.WebviewViewProvider {
 <head>
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';">
 <style>
-  button { display: block; width: 100%; margin: 0 0 8px; }
-  .notice { margin-top: 16px; font-size: 0.85em; opacity: 0.8; }
+  body { padding: 0 12px 12px; }
+  h3 { margin: 16px 0 4px; font-size: 1em; }
+  p { margin: 4px 0 8px; }
+  .hint { opacity: 0.8; font-size: 0.9em; }
+  button {
+    display: block; width: 100%; margin: 4px 0; padding: 4px 8px; border: none; cursor: pointer;
+    color: var(--vscode-button-foreground); background: var(--vscode-button-background);
+  }
+  button:hover { background: var(--vscode-button-hoverBackground); }
+  button.secondary { color: var(--vscode-button-secondaryForeground); background: var(--vscode-button-secondaryBackground); }
+  button.secondary:hover { background: var(--vscode-button-secondaryHoverBackground); }
+  a { color: var(--vscode-textLink-foreground); cursor: pointer; }
+  ul { margin: 4px 0; padding-left: 16px; }
+  .notice { margin-top: 16px; font-size: 0.8em; opacity: 0.7; }
 </style>
 </head>
 <body>
-  <button id="copy">Copy for AI (Sanitized)</button>
-  <button id="run">Run Refiner on Active File</button>
-  <button id="settings">Open Settings</button>
-  <p>Token budget: ${tokenBudget > 0 ? `~${formatTokens(tokenBudget)} tokens` : 'disabled'}</p>
-  <p>Secret scrubbing: ${scrubbingEnabled ? 'enabled' : 'disabled'}</p>
-  <p>Inline secret warnings: ${diagnosticsEnabled ? 'enabled' : 'disabled'}</p>
-  <p>Entropy scoring: ${entropyScoringEnabled ? 'enabled' : 'disabled'}</p>
-  <p>Semantic folding: ${semanticFoldingEnabled ? 'enabled' : 'disabled'}</p>
-  <p>Manifest export format: ${exportFormat}</p>
+  <h3>Share code with AI</h3>
+  <p class="hint">Copy the selection or active file with secrets redacted and a token estimate. Use it before pasting into any AI chat. Shortcut: Ctrl+Shift+Alt+M (Cmd+Shift+Alt+M on macOS).</p>
+  <button data-command="copyForAI">Copy for AI (Sanitized)</button>
+  <button class="secondary" data-command="preview">Preview Sanitized File</button>
+
+  <h3>Analyze a file</h3>
+  <p class="hint">The Refiner scores how much real signal a file has (entropy) and can summarize it with a local Ollama model. Use it on large files before sharing.</p>
+  <button class="secondary" data-command="runRefiner">Run Refiner on Active File</button>
+
+  <h3>Secret warnings</h3>
+  <p class="hint">Likely secrets are underlined and listed in the Problems panel as <b>MaxiMinion</b>. Press Ctrl+. on one to redact it.</p>
+  <button class="secondary" data-command="showProblems">Show Problems Panel</button>
+
+  <h3>Current settings</h3>
+  <ul>
+    <li>Token budget: ${tokenBudget > 0 ? `~${formatTokens(tokenBudget)} tokens` : 'off'}</li>
+    <li>Secret scrubbing: ${onOff(scrubbingEnabled)}</li>
+    <li>Inline secret warnings: ${onOff(diagnosticsEnabled)}</li>
+    <li>Entropy scoring: ${onOff(entropyScoringEnabled)}</li>
+    <li>Semantic folding (Ollama): ${onOff(semanticFoldingEnabled)}</li>
+    <li>Report format: ${exportFormat}</li>
+  </ul>
+  <button class="secondary" data-command="openSettings">Open Settings</button>
+
+  <h3>Help</h3>
+  <p><a data-command="showHelp">Get Started walkthrough</a> · <a data-command="openDocs">Documentation</a></p>
+
   <p class="notice">${CE_NOTICE} Secret detection is pattern-based; review output before sharing it.</p>
   <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
-    document.getElementById('copy').addEventListener('click', () => {
-      vscode.postMessage({ command: 'copyForAI' });
-    });
-    document.getElementById('run').addEventListener('click', () => {
-      vscode.postMessage({ command: 'runRefiner' });
-    });
-    document.getElementById('settings').addEventListener('click', () => {
-      vscode.postMessage({ command: 'openSettings' });
+    document.querySelectorAll('[data-command]').forEach((element) => {
+      element.addEventListener('click', () => vscode.postMessage({ command: element.dataset.command }));
     });
   </script>
 </body>
@@ -504,12 +597,13 @@ export function activate(context: vscode.ExtensionContext): void {
       if (!result) return;
 
       await vscode.env.clipboard.writeText(result.text);
-      void vscode.window.showInformationMessage(`Copied sanitized text. Redacted ${result.count} value(s).`);
+      void info(`Copied sanitized text. Redacted ${result.count} value(s).`);
     }),
     vscode.commands.registerCommand('maximinion.runRefinerOnActiveFile', createRunRefinerOnActiveDocument(outputChannel)),
     vscode.commands.registerCommand('maximinion.openSettings', () => {
       void vscode.commands.executeCommand('workbench.action.openSettings', 'maximinion');
     }),
+    vscode.commands.registerCommand('maximinion.showHelp', () => showHelp()),
   );
 
   diagnostics.refreshAll();

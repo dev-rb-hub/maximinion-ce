@@ -122,6 +122,7 @@ describe('MaxiMinion VS Code commands', () => {
     for (const key of Object.keys(globalStateValues)) delete globalStateValues[key];
     mockVscode.workspace.textDocuments = [];
     mockVscode.window.showInformationMessage.mockResolvedValue(undefined);
+    mockVscode.window.showWarningMessage.mockResolvedValue(undefined);
     mockVscode.window.activeTextEditor = { document: makeDocument(sourceText) };
     mockVscode.workspace.openTextDocument.mockResolvedValue({ uri: 'untitled:preview' });
     jest.resetModules();
@@ -174,7 +175,7 @@ describe('MaxiMinion VS Code commands', () => {
     await handler!();
 
     expect(mockVscode.window.showWarningMessage).toHaveBeenCalledWith(
-      'Open a text document before sanitizing.',
+      'MaxiMinion: Open a text document before sanitizing.',
     );
     expect(mockVscode.workspace.openTextDocument).not.toHaveBeenCalled();
   });
@@ -206,14 +207,14 @@ describe('MaxiMinion VS Code commands', () => {
     };
 
     provider.resolveWebviewView(fakeWebviewView);
-    expect(fakeWebviewView.webview.html).toContain('Manifest export format: json');
+    expect(fakeWebviewView.webview.html).toContain('Report format: json');
 
     configValues['manifest.exportFormat'] = 'markdown';
     const configCalls = mockVscode.workspace.onDidChangeConfiguration.mock.calls as any[];
     const configCallback = configCalls[configCalls.length - 1][0];
     configCallback({ affectsConfiguration: () => true });
 
-    expect(fakeWebviewView.webview.html).toContain('Manifest export format: markdown');
+    expect(fakeWebviewView.webview.html).toContain('Report format: markdown');
   });
 
   test('runRefinerOnActiveFile opens a preview containing only the refined text', async () => {
@@ -229,8 +230,13 @@ describe('MaxiMinion VS Code commands', () => {
     const outputChannel = mockVscode.window.createOutputChannel.mock.results[0].value;
     expect(outputChannel.appendLine).toHaveBeenCalledWith(expect.stringContaining('"entropy"'));
     expect(mockVscode.window.showInformationMessage).toHaveBeenCalledWith(
-      expect.stringMatching(/Refiner complete\. Redacted \d+ value\(s\)\. Optimization: -?\d+\.\d%\./),
+      expect.stringMatching(
+        /^MaxiMinion: Refiner complete: signal (LOW|MEDIUM|HIGH), \d+ value\(s\) redacted, \d+\.\d% (smaller|larger)\./,
+      ),
+      'Show Report',
+      'What does this mean?',
     );
+    expect(outputChannel.appendLine).toHaveBeenCalledWith(expect.stringMatching(/-> (LOW|MEDIUM|HIGH) signal:/));
   });
 
   test('runRefinerOnActiveFile skips secret scrubbing and entropy scoring when disabled', async () => {
@@ -263,7 +269,7 @@ describe('MaxiMinion VS Code commands', () => {
     await handler!();
 
     expect(mockVscode.window.showWarningMessage).toHaveBeenCalledWith(
-      'Open a text document before running the Refiner.',
+      'MaxiMinion: Open a text document before running the Refiner.',
     );
     expect(mockVscode.workspace.openTextDocument).not.toHaveBeenCalled();
   });
@@ -290,7 +296,7 @@ describe('MaxiMinion VS Code commands', () => {
       expect(copied).toContain('[REDACTED_API_KEY]');
       expect(copied).not.toContain('sk-proj-abcdef1234567890abcdef1234567890');
       expect(mockVscode.window.showInformationMessage).toHaveBeenCalledWith(
-        expect.stringMatching(/^Copied for AI: 1 source\(s\), 1 value\(s\) redacted, ~\d+ → ~\d+ tokens\.$/),
+        expect.stringMatching(/^MaxiMinion: Copied for AI: 1 source\(s\), 1 value\(s\) redacted, ~\d+ → ~\d+ tokens\.$/),
       );
     });
 
@@ -357,6 +363,7 @@ describe('MaxiMinion VS Code commands', () => {
       expect(mockVscode.env.clipboard.writeText).toHaveBeenCalled();
       expect(mockVscode.window.showWarningMessage).toHaveBeenCalledWith(
         expect.stringContaining('exceeds your token budget of ~1'),
+        'Change Budget',
       );
     });
 
@@ -367,7 +374,7 @@ describe('MaxiMinion VS Code commands', () => {
 
       expect(mockVscode.env.clipboard.writeText).not.toHaveBeenCalled();
       expect(mockVscode.window.showWarningMessage).toHaveBeenCalledWith(
-        'Open a file or select files in the Explorer before using Copy for AI.',
+        'MaxiMinion: Open a file or select files in the Explorer before using Copy for AI.',
       );
     });
   });
@@ -414,7 +421,7 @@ describe('MaxiMinion VS Code commands', () => {
 
       const provider = (mockVscode.languages.registerCodeActionsProvider.mock.calls as any[])[0][1];
       const [action] = provider.provideCodeActions(document, diagnostic.range, { diagnostics: [diagnostic] });
-      expect(action.title).toBe('Redact with [REDACTED_API_KEY]');
+      expect(action.title).toBe('MaxiMinion: Redact with [REDACTED_API_KEY]');
       expect(action.edit.replacements).toEqual([
         { uri: document.uri, range: diagnostic.range, text: '[REDACTED_API_KEY]' },
       ]);
@@ -440,11 +447,53 @@ describe('MaxiMinion VS Code commands', () => {
     });
   });
 
+  describe('help and discoverability', () => {
+    test('Get Started & Help opens the MaxiMinion walkthrough', async () => {
+      mockVscode.commands.executeCommand.mockResolvedValue(undefined);
+
+      await commandHandlers.get('maximinion.showHelp')!();
+
+      expect(mockVscode.commands.executeCommand).toHaveBeenCalledWith(
+        'workbench.action.openWalkthrough',
+        'maximinion.maximinion#gettingStarted',
+        false,
+      );
+    });
+
+    test('secret diagnostics link their code to the help page', () => {
+      const openCallback = (mockVscode.workspace.onDidOpenTextDocument.mock.calls as any[])[0][0];
+      openCallback(makeDocument(sourceText));
+      const [diagnostic] = diagnosticCollection.set.mock.calls[0][1];
+
+      expect(diagnostic.code.value).toBe('API_KEY');
+      expect(diagnostic.code.target.value).toContain('README.md#inline-secret-warnings');
+    });
+
+    test('sidebar explains each action and links to help', () => {
+      const provider = (mockVscode.window.registerWebviewViewProvider.mock.calls as any[])[0][1];
+      const fakeWebviewView = {
+        webview: { options: undefined as unknown, html: '', onDidReceiveMessage: jest.fn() },
+        onDidDispose: jest.fn(),
+      };
+      provider.resolveWebviewView(fakeWebviewView);
+      const onMessage = fakeWebviewView.webview.onDidReceiveMessage.mock.calls[0][0];
+
+      expect(fakeWebviewView.webview.html).toContain('The Refiner scores how much real signal a file has');
+      onMessage({ command: 'showHelp' });
+      onMessage({ command: 'runRefiner' });
+      onMessage({ command: 'notAllowed' });
+
+      expect(mockVscode.commands.executeCommand).toHaveBeenCalledWith('maximinion.showHelp');
+      expect(mockVscode.commands.executeCommand).toHaveBeenCalledWith('maximinion.runRefinerOnActiveFile');
+      expect(mockVscode.commands.executeCommand).not.toHaveBeenCalledWith(undefined);
+    });
+  });
+
   describe('Community Edition notice', () => {
     test('is shown once on first activation and offers the license', () => {
       expect(mockVscode.window.showInformationMessage).toHaveBeenCalledWith(
         expect.stringContaining("provided 'AS IS' without warranties"),
-        'OK',
+        'Get Started',
         'View License',
       );
       expect(globalStateValues['maximinion.ceNoticeShown']).toBe(true);
