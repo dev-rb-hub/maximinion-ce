@@ -264,8 +264,8 @@ See the [API reference](docs/API/) and [examples](docs/EXAMPLES/) for manifest g
 | ✅ 0.3.0 | Marketplace readiness: accurate docs and Quick Start, AS IS notices, listing metadata | [#30](https://github.com/dev-rb-hub/maximinion-ce/issues/30) |
 | ✅ 0.3.0 | Copy for AI with token estimates, budget warnings, and status bar counter | [#34](https://github.com/dev-rb-hub/maximinion-ce/issues/34) |
 | ✅ 0.3.0 | Inline secret warnings with a redact quick fix | [#31](https://github.com/dev-rb-hub/maximinion-ce/issues/31) |
-| 🔜 Next | Workspace context pack: Librarian ranking in the sidebar, token-budget selection, manifest sync on save | [#32](https://github.com/dev-rb-hub/maximinion-ce/issues/32) |
-| 🔜 Next | Copilot Chat / MCP integration on top of Proxy Transport | [#33](https://github.com/dev-rb-hub/maximinion-ce/issues/33) |
+| 🗓️ 0.4.0 | Workspace context pack: Librarian ranking in the sidebar, token-budget selection, manifest sync on save | [#32](https://github.com/dev-rb-hub/maximinion-ce/issues/32) |
+| 🔜 Later | Copilot Chat / MCP integration on top of Proxy Transport | [#33](https://github.com/dev-rb-hub/maximinion-ce/issues/33) |
 
 ### Core libraries and commercial editions
 
