@@ -123,6 +123,15 @@ export interface FoldedSummary {
   tokensSaved: number;
   model: string;
   timestamp: Date;
+  error?: string; // set when folding failed and the original code was returned
+}
+
+/**
+ * A model installed in the local Ollama instance
+ */
+export interface OllamaModelInfo {
+  name: string;
+  capabilities: string[];
 }
 
 /**

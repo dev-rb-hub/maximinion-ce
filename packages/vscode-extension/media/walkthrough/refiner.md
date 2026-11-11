@@ -27,7 +27,9 @@ The Refiner is MaxiMinion's analysis pipeline. Where **Copy for AI** is for ever
 ## Enabling semantic folding
 
 1. Install [Ollama](https://ollama.com) and start it (`ollama serve`).
-2. Pull a small model, for example `ollama pull phi3`.
-3. Turn on `maximinion.semanticFolding.enabled`.
+2. Pull a model, for example `ollama pull phi3`, or use one you already have (`ollama list`).
+3. Turn on `maximinion.semanticFolding.enabled`, and set `maximinion.semanticFolding.model` if you're not using `phi3`.
+
+If Ollama isn't running or the model isn't installed, the Refiner tells you and offers to switch to an installed model. A progress notification shows while folding runs, and you can cancel it. The first run can take a while as Ollama loads the model.
 
 Nothing is sent to a remote service.

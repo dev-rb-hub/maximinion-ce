@@ -49,7 +49,7 @@ The Refiner is the analysis pipeline behind **Run Refiner on Active File (Signal
 
 1. **Secret scrubbing:** likely secrets are replaced with `[REDACTED_…]`.
 2. **Entropy scoring:** Shannon entropy measures information density. `HIGH` means dense, varied content (usually real logic). `LOW` means repetitive content such as imports, generated code, or long comment blocks, which is a good candidate to trim.
-3. **Semantic folding** (optional, off by default): a local [Ollama](https://ollama.com) model summarizes the code. The summary is lossy, so review it. To enable it, run `ollama serve`, run `ollama pull phi3`, and turn on `maximinion.semanticFolding.enabled`.
+3. **Semantic folding** (optional, off by default): a local [Ollama](https://ollama.com) model summarizes the code. The summary is lossy, so review it. To enable it, start Ollama (`ollama serve`), install a model (`ollama pull phi3`, or use one from `ollama list`), turn on `maximinion.semanticFolding.enabled`, and set `maximinion.semanticFolding.model` if you're not using `phi3`. If Ollama or the model is missing, the Refiner explains why and offers to switch to an installed model. Folding shows a progress notification that you can cancel.
 
 The refined text opens in a preview tab, and your file is not changed. A report with a plain-English explanation of each step is written to **View → Output → MaxiMinion**.
 
@@ -76,6 +76,7 @@ All commands are in the Command Palette under **MaxiMinion:**.
 | `maximinion.secretScrubbing.enabled` | `true` | Enable secret scrubbing for Copy for AI and the Refiner commands. |
 | `maximinion.entropyScoring.enabled` | `true` | Enable Shannon entropy scoring. |
 | `maximinion.semanticFolding.enabled` | `false` | Enable semantic folding via a local Ollama instance at `http://localhost:11434`. Requires entropy scoring to be enabled. |
+| `maximinion.semanticFolding.model` | `phi3` | Installed Ollama model used for semantic folding (see `ollama list`). |
 | `maximinion.manifest.exportFormat` | `json` | Format (`json` or `markdown`) used for the report logged to the output channel. |
 
 ## Notes

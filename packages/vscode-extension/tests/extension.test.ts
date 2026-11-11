@@ -56,6 +56,8 @@ const mockVscode = {
   Uri: { parse: jest.fn((value: string) => ({ value })) },
   FileType: { File: 1, Directory: 2 },
   StatusBarAlignment: { Left: 1, Right: 2 },
+  ProgressLocation: { Notification: 15 },
+  ConfigurationTarget: { Global: 1 },
   DiagnosticSeverity: { Error: 0, Warning: 1, Information: 2, Hint: 3 },
   CodeActionKind: { QuickFix: 'quickfix' },
   ThemeColor: class {
@@ -85,6 +87,10 @@ const mockVscode = {
     showInformationMessage: jest.fn(),
     showTextDocument: jest.fn(),
     showWarningMessage: jest.fn(),
+    showQuickPick: jest.fn(),
+    withProgress: jest.fn((_options: unknown, task: (progress: unknown, token: unknown) => unknown) =>
+      task({ report: jest.fn() }, { onCancellationRequested: jest.fn() }),
+    ),
     registerWebviewViewProvider: jest.fn(disposable),
     createStatusBarItem: jest.fn(() => statusBarItem),
     onDidChangeActiveTextEditor: jest.fn(disposable),
@@ -444,6 +450,92 @@ describe('MaxiMinion VS Code commands', () => {
 
       expect(diagnosticCollection.delete).toHaveBeenCalledWith(document.uri);
       expect(diagnosticCollection.set).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('semantic folding', () => {
+    const realFetch = global.fetch;
+    let generateCalls: number;
+
+    function mockOllama(options: { reachable?: boolean; models?: string[]; summary?: string }) {
+      generateCalls = 0;
+      global.fetch = jest.fn(async (url: any) => {
+        if (options.reachable === false) throw new Error('connect ECONNREFUSED');
+        if (String(url).endsWith('/api/tags')) {
+          return { ok: true, status: 200, json: async () => ({ models: (options.models ?? []).map((name) => ({ name })) }) };
+        }
+        generateCalls++;
+        return { ok: true, status: 200, json: async () => ({ response: options.summary ?? 'Adds numbers.' }) };
+      }) as unknown as typeof fetch;
+    }
+
+    beforeEach(() => {
+      configValues['semanticFolding.enabled'] = true;
+      jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    });
+
+    afterEach(() => {
+      global.fetch = realFetch;
+      jest.restoreAllMocks();
+    });
+
+    const outputLines = () =>
+      (mockVscode.window.createOutputChannel.mock.results[0].value.appendLine.mock.calls as string[][]).map((c) => c[0]);
+
+    test('folds with the configured model behind a cancellable progress notification', async () => {
+      configValues['semanticFolding.model'] = 'gemma4:26b';
+      mockOllama({ models: ['gemma4:26b'], summary: 'Adds numbers.' });
+
+      await commandHandlers.get('maximinion.runRefinerOnActiveFile')!();
+
+      expect(mockVscode.window.withProgress).toHaveBeenCalledWith(
+        expect.objectContaining({ cancellable: true, title: expect.stringContaining('gemma4:26b') }),
+        expect.any(Function),
+      );
+      expect(mockVscode.workspace.openTextDocument).toHaveBeenCalledWith({
+        content: '# Adds numbers.',
+        language: 'typescript',
+      });
+      expect(outputLines()).toContainEqual(expect.stringContaining('Semantic folding: applied with gemma4:26b'));
+    });
+
+    test('explains a missing model, lists installed ones, and offers to switch', async () => {
+      mockOllama({ models: ['gemma4:26b'] });
+
+      await commandHandlers.get('maximinion.runRefinerOnActiveFile')!();
+
+      expect(generateCalls).toBe(0);
+      expect(mockVscode.window.showWarningMessage).toHaveBeenCalledWith(
+        'MaxiMinion: Semantic folding skipped: model "phi3" is not installed in Ollama (installed: gemma4:26b).',
+        'Use gemma4:26b',
+        'Choose Model',
+      );
+      expect(outputLines()).not.toContainEqual(expect.stringContaining('Semantic folding: applied'));
+      expect(mockVscode.workspace.openTextDocument).toHaveBeenCalledWith({
+        content: expect.stringContaining('[REDACTED_API_KEY]'),
+        language: 'typescript',
+      });
+    });
+
+    test('explains when Ollama is not running', async () => {
+      mockOllama({ reachable: false });
+
+      await commandHandlers.get('maximinion.runRefinerOnActiveFile')!();
+
+      expect(mockVscode.window.showWarningMessage).toHaveBeenCalledWith(
+        'MaxiMinion: Semantic folding skipped: Ollama is not running at http://localhost:11434.',
+        'Install Ollama',
+        'Turn Off Folding',
+      );
+      expect(mockVscode.window.withProgress).not.toHaveBeenCalled();
+    });
+
+    test('matches the model name without the :latest tag', async () => {
+      mockOllama({ models: ['phi3:latest'] });
+
+      await commandHandlers.get('maximinion.runRefinerOnActiveFile')!();
+
+      expect(generateCalls).toBe(1);
     });
   });
 

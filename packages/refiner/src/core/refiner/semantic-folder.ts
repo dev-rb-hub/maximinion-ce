@@ -3,7 +3,13 @@
  * Compresses code via local LLM (Ollama) summarization
  */
 
-import { FoldedSummary, OllamaFoldResponse, RefinerConfig } from './types';
+import { FoldedSummary, OllamaFoldResponse, OllamaModelInfo, RefinerConfig } from './types';
+
+/** Ollama tags omit ":latest" in user input, so "phi3" and "phi3:latest" are the same model. */
+export function sameOllamaModel(a: string, b: string): boolean {
+  const normalize = (name: string) => (name.includes(':') ? name : `${name}:latest`);
+  return normalize(a) === normalize(b);
+}
 
 export class SemanticFolder {
   private ollamaEndpoint: string;
@@ -38,9 +44,21 @@ export class SemanticFolder {
   }
 
   /**
-   * Fold (compress) a code function into semantic summary
+   * List models installed in the local Ollama instance. Throws if Ollama is unreachable.
    */
-  public async fold(code: string, context?: string): Promise<FoldedSummary> {
+  public async listModels(signal?: AbortSignal): Promise<OllamaModelInfo[]> {
+    const response = await this.makeRequest('/api/tags', { method: 'GET', signal });
+    const models: Array<{ name?: string; model?: string; capabilities?: string[] }> = response?.models ?? [];
+    return models
+      .map((m) => ({ name: m.name ?? m.model ?? '', capabilities: m.capabilities ?? [] }))
+      .filter((m) => m.name.length > 0);
+  }
+
+  /**
+   * Fold (compress) a code function into semantic summary.
+   * On failure the original code is returned with `confidence: 0` and `error` set.
+   */
+  public async fold(code: string, context?: string, signal?: AbortSignal): Promise<FoldedSummary> {
     if (!this.enabled) {
       return {
         summary: code,
@@ -60,7 +78,7 @@ export class SemanticFolder {
     try {
       const _startTime = Date.now();
       const prompt = this.buildPrompt(code, context);
-      const response = await this.callOllama(prompt);
+      const response = await this.callOllama(prompt, code, signal);
       // Processing time is tracked in response.processingTimeMs
 
       const summary: FoldedSummary = {
@@ -77,13 +95,15 @@ export class SemanticFolder {
 
       return summary;
     } catch (error) {
-      console.warn('Semantic folding failed, returning original:', error);
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn('Semantic folding failed, returning original:', message);
       return {
         summary: code,
         confidence: 0,
         tokensSaved: 0,
         model: this.ollamaModel,
-        timestamp: new Date()
+        timestamp: new Date(),
+        error: message
       };
     }
   }
@@ -124,29 +144,35 @@ Summary (1-2 lines):`;
   /**
    * Call Ollama API
    */
-  private async callOllama(prompt: string): Promise<OllamaFoldResponse> {
+  private async callOllama(prompt: string, code: string, signal?: AbortSignal): Promise<OllamaFoldResponse> {
     try {
+      // Thinking models (e.g. gemma4, qwen3) otherwise spend minutes reasoning before a 1-2 line answer.
+      // Non-thinking models reject the flag, so it is only sent when the model supports it.
+      const supportsThinking = await this.modelSupportsThinking(signal);
       const response = await this.makeRequest('/api/generate', {
         method: 'POST',
+        signal,
         body: JSON.stringify({
           model: this.ollamaModel,
           prompt,
           stream: false,
-          temperature: 0.3, // Lower temperature for consistency
-          top_p: 0.9,
-          num_predict: 50 // Limit to ~2 lines
+          ...(supportsThinking ? { think: false } : {}),
+          options: {
+            temperature: 0.3, // Lower temperature for consistency
+            top_p: 0.9,
+            num_predict: 80 // Limit to ~2 lines
+          }
         })
       });
 
-      if (!response || !response.response) {
-        throw new Error('Invalid response from Ollama');
+      if (!response || typeof response.response !== 'string' || response.response.trim().length === 0) {
+        throw new Error('Ollama returned an empty response');
       }
 
-      // Parse the response
       const summary = response.response.trim();
 
-      // Estimate tokens saved (rough calculation)
-      const originalTokens = Math.ceil(prompt.split(/\s+/).length * 1.3);
+      // Savings compare the original code with the summary, not the instruction prompt.
+      const originalTokens = Math.ceil(code.split(/\s+/).filter(Boolean).length * 1.3);
       const summaryTokens = Math.ceil(summary.split(/\s+/).length * 1.3);
       const tokensSaved = Math.max(0, originalTokens - summaryTokens);
 
@@ -158,7 +184,17 @@ Summary (1-2 lines):`;
         processingTimeMs: response.eval_duration ? Math.round(response.eval_duration / 1_000_000) : 0
       };
     } catch (error) {
-      throw new Error(`Ollama call failed: ${error}`);
+      throw new Error(`Ollama call failed: ${error instanceof Error ? error.message : error}`);
+    }
+  }
+
+  private async modelSupportsThinking(signal?: AbortSignal): Promise<boolean> {
+    try {
+      const models = await this.listModels(signal);
+      const model = models.find((m) => sameOllamaModel(m.name, this.ollamaModel));
+      return model?.capabilities.includes('thinking') ?? false;
+    } catch {
+      return false;
     }
   }
 
@@ -181,12 +217,19 @@ Summary (1-2 lines):`;
       });
 
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
+        let detail = '';
+        try {
+          const body = (await response.json()) as { error?: string } | null;
+          detail = body?.error ? `: ${body.error}` : '';
+        } catch {
+          // Body is not JSON; the status code is enough.
+        }
+        throw new Error(`HTTP ${response.status}${detail}`);
       }
 
       return response.json();
     } catch (error) {
-      throw new Error(`Request to ${url} failed: ${error}`);
+      throw new Error(`Request to ${url} failed: ${error instanceof Error ? error.message : error}`);
     }
   }
 

@@ -1,4 +1,4 @@
-import { Sanitizer, Refiner, EntropyScore } from '@maximinion/refiner';
+import { Sanitizer, Refiner, EntropyScore, sameOllamaModel } from '@maximinion/refiner';
 import * as vscode from 'vscode';
 import { buildAiPayload, estimateTokens, formatTokens, PayloadSource } from './payload';
 import { findSecretRanges, PII_TYPES } from './secret-ranges';
@@ -114,6 +114,7 @@ function createRunRefinerOnActiveDocument(
     const secretScrubbingEnabled = config.get<boolean>('secretScrubbing.enabled', true);
     const entropyScoringEnabled = config.get<boolean>('entropyScoring.enabled', true);
     const semanticFoldingEnabled = config.get<boolean>('semanticFolding.enabled', false);
+    const foldingModel = config.get<string>('semanticFolding.model', 'phi3').trim() || 'phi3';
     const exportFormat = config.get<string>('manifest.exportFormat', 'json');
 
     const filePath = editor.document.uri.fsPath || editor.document.fileName;
@@ -124,10 +125,11 @@ function createRunRefinerOnActiveDocument(
     output.appendLine(`Input file: ${filePath}`);
     output.appendLine(
       `Configuration: secretScrubbing=${secretScrubbingEnabled}, entropyScoring=${entropyScoringEnabled}, ` +
-        `semanticFolding=${semanticFoldingEnabled}, manifestExportFormat=${exportFormat}`,
+        `semanticFolding=${semanticFoldingEnabled}${semanticFoldingEnabled ? ` (model=${foldingModel})` : ''}, ` +
+        `manifestExportFormat=${exportFormat}`,
     );
 
-    const refiner = new Refiner({ enableSemanticFolding: semanticFoldingEnabled });
+    const refiner = new Refiner({ enableSemanticFolding: semanticFoldingEnabled, ollamaModel: foldingModel });
     let currentText = originalText;
     let scrubbedCount = 0;
 
@@ -160,17 +162,11 @@ function createRunRefinerOnActiveDocument(
     } else if (!entropy) {
       output.appendLine('Semantic folding: skipped (requires entropy scoring to be enabled)');
     } else {
-      try {
-        const folded = await refiner.fold(currentText);
+      const folded = await runSemanticFolding(refiner, currentText, foldingModel, output);
+      if (folded) {
         foldedApplied = true;
         foldedTokensSaved = folded.tokensSaved;
         currentText = folded.summary;
-        output.appendLine(
-          `Semantic folding: applied (confidence=${folded.confidence.toFixed(2)}, tokensSaved=${folded.tokensSaved})`,
-        );
-      } catch (error) {
-        output.appendLine(`Semantic folding: failed (${error instanceof Error ? error.message : String(error)})`);
-        output.appendLine('  -> Is Ollama running at http://localhost:11434? Try `ollama serve` and `ollama pull phi3`.');
       }
     }
 
@@ -217,6 +213,94 @@ function createRunRefinerOnActiveDocument(
       }
     });
   };
+}
+
+const OLLAMA_URL = 'http://localhost:11434';
+
+async function setFoldingModel(model: string): Promise<void> {
+  await getConfig().update('semanticFolding.model', model, vscode.ConfigurationTarget.Global);
+  void info(`Semantic folding model set to "${model}". Run the Refiner again to fold with it.`);
+}
+
+/**
+ * Checks Ollama and the configured model first so failures are explained, then folds with a cancellable progress
+ * notification. Returns undefined when folding did not happen; the reason is logged and shown to the user.
+ */
+async function runSemanticFolding(
+  refiner: Refiner,
+  text: string,
+  model: string,
+  output: vscode.OutputChannel,
+): Promise<{ summary: string; tokensSaved: number } | undefined> {
+  let installed: string[];
+  try {
+    installed = (await refiner.listOllamaModels()).map((m) => m.name);
+  } catch (error) {
+    output.appendLine(`Semantic folding: failed (Ollama is not reachable at ${OLLAMA_URL})`);
+    output.appendLine('  -> Install Ollama from https://ollama.com and start it with `ollama serve`.');
+    void warn(`Semantic folding skipped: Ollama is not running at ${OLLAMA_URL}.`, 'Install Ollama', 'Turn Off Folding').then(
+      (choice) => {
+        if (choice === 'Install Ollama') {
+          void vscode.env.openExternal(vscode.Uri.parse('https://ollama.com/download'));
+        } else if (choice === 'Turn Off Folding') {
+          void getConfig().update('semanticFolding.enabled', false, vscode.ConfigurationTarget.Global);
+        }
+      },
+    );
+    return undefined;
+  }
+
+  if (!installed.some((name) => sameOllamaModel(name, model))) {
+    const available = installed.length > 0 ? installed.join(', ') : 'none';
+    output.appendLine(`Semantic folding: failed (model "${model}" is not installed; installed models: ${available})`);
+    output.appendLine(`  -> Run \`ollama pull ${model}\`, or set maximinion.semanticFolding.model to an installed model.`);
+    const useInstalled = installed.length > 0 ? `Use ${installed[0]}` : undefined;
+    const actions = [useInstalled, 'Choose Model'].filter((a): a is string => Boolean(a));
+    void warn(
+      `Semantic folding skipped: model "${model}" is not installed in Ollama (installed: ${available}).`,
+      ...actions,
+    ).then(async (choice) => {
+      if (choice === useInstalled && useInstalled) {
+        await setFoldingModel(installed[0]);
+      } else if (choice === 'Choose Model') {
+        const picked = await vscode.window.showQuickPick(installed, {
+          title: 'MaxiMinion: choose an Ollama model for semantic folding',
+          placeHolder: installed.length > 0 ? 'Installed Ollama models' : `No models installed. Run "ollama pull ${model}" first.`,
+        });
+        if (picked) await setFoldingModel(picked);
+      }
+    });
+    return undefined;
+  }
+
+  const controller = new AbortController();
+  const folded = await vscode.window.withProgress(
+    {
+      location: vscode.ProgressLocation.Notification,
+      title: `MaxiMinion: Folding with ${model}… (the first run can take a while as the model loads)`,
+      cancellable: true,
+    },
+    (_progress, token) => {
+      token.onCancellationRequested(() => controller.abort());
+      return refiner.fold(text, controller.signal);
+    },
+  );
+
+  if (controller.signal.aborted) {
+    output.appendLine('Semantic folding: cancelled');
+    return undefined;
+  }
+  if (folded.error) {
+    output.appendLine(`Semantic folding: failed (${folded.error})`);
+    void warn(`Semantic folding failed with ${model}. See the MaxiMinion output for details.`);
+    return undefined;
+  }
+
+  output.appendLine(
+    `Semantic folding: applied with ${folded.model} (confidence=${folded.confidence.toFixed(2)}, tokensSaved=${folded.tokensSaved})`,
+  );
+  output.appendLine('  -> The summary is lossy; review it before relying on it.');
+  return folded;
 }
 
 function describeSignal(rating: string): string {
@@ -443,6 +527,10 @@ function showNoticeOnce(context: vscode.ExtensionContext): void {
   );
 }
 
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+}
+
 function getNonce(): string {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
   let nonce = '';
@@ -535,7 +623,9 @@ class MaximinionSidebarProvider implements vscode.WebviewViewProvider {
     <li>Secret scrubbing: ${onOff(scrubbingEnabled)}</li>
     <li>Inline secret warnings: ${onOff(diagnosticsEnabled)}</li>
     <li>Entropy scoring: ${onOff(entropyScoringEnabled)}</li>
-    <li>Semantic folding (Ollama): ${onOff(semanticFoldingEnabled)}</li>
+    <li>Semantic folding (Ollama): ${onOff(semanticFoldingEnabled)}${
+      semanticFoldingEnabled ? ` (model: ${escapeHtml(config.get<string>('semanticFolding.model', 'phi3'))})` : ''
+    }</li>
     <li>Report format: ${exportFormat}</li>
   </ul>
   <button class="secondary" data-command="openSettings">Open Settings</button>

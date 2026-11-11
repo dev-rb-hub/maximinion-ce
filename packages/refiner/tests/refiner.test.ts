@@ -3,7 +3,7 @@
  * Tests for sanitizer, entropy calculator, and semantic folder
  */
 
-import { Refiner, Sanitizer, EntropyCalculator, SemanticFolder } from '../src/core/refiner';
+import { Refiner, Sanitizer, EntropyCalculator, SemanticFolder, sameOllamaModel } from '../src/core/refiner';
 import { estimateTokenCount } from '../src';
 
 describe('Phase 1: THE REFINER - Unit Tests', () => {
@@ -267,6 +267,70 @@ function test() {
       folder.clearCache();
       const stats = folder.getCacheStats();
       expect(stats.size).toBe(0);
+    });
+  });
+
+  describe('SemanticFolder with a mocked Ollama', () => {
+    const realFetch = global.fetch;
+    const tags = { models: [{ name: 'gemma4:26b', capabilities: ['completion', 'thinking'] }, { name: 'phi3:latest', capabilities: ['completion'] }] };
+
+    function mockOllama(generate: (body: any) => { status: number; json: unknown }) {
+      const calls: any[] = [];
+      global.fetch = jest.fn(async (url: any, init: any) => {
+        const body = init?.body ? JSON.parse(init.body) : undefined;
+        calls.push({ url: String(url), body });
+        const result = String(url).endsWith('/api/tags') ? { status: 200, json: tags } : generate(body);
+        return { ok: result.status < 400, status: result.status, json: async () => result.json } as Response;
+      }) as typeof fetch;
+      return calls;
+    }
+
+    afterEach(() => {
+      global.fetch = realFetch;
+      jest.restoreAllMocks();
+    });
+
+    beforeEach(() => jest.spyOn(console, 'warn').mockImplementation(() => undefined));
+
+    test('sends generation options under "options" and disables thinking for thinking models', async () => {
+      const calls = mockOllama(() => ({ status: 200, json: { response: 'Adds two numbers.' } }));
+      const folder = new SemanticFolder({ ollamaModel: 'gemma4:26b' });
+
+      const result = await folder.fold('function add(a, b) {\n  return a + b;\n}');
+
+      const generate = calls.find((c) => c.url.endsWith('/api/generate')).body;
+      expect(generate.think).toBe(false);
+      expect(generate.options).toMatchObject({ temperature: 0.3, num_predict: 80 });
+      expect(generate.temperature).toBeUndefined();
+      expect(result.summary).toBe('# Adds two numbers.');
+      expect(result.error).toBeUndefined();
+    });
+
+    test('does not send the thinking flag to models without that capability', async () => {
+      const calls = mockOllama(() => ({ status: 200, json: { response: 'Adds.' } }));
+      await new SemanticFolder({ ollamaModel: 'phi3' }).fold('const a = 1;');
+
+      expect(calls.find((c) => c.url.endsWith('/api/generate')).body).not.toHaveProperty('think');
+    });
+
+    test('reports why folding failed instead of failing silently', async () => {
+      mockOllama(() => ({ status: 404, json: { error: "model 'mistral' not found" } }));
+      const code = 'const a = 1;';
+
+      const result = await new SemanticFolder({ ollamaModel: 'mistral' }).fold(code);
+
+      expect(result.summary).toBe(code);
+      expect(result.confidence).toBe(0);
+      expect(result.error).toContain("model 'mistral' not found");
+    });
+
+    test('lists installed models and matches names with or without :latest', async () => {
+      mockOllama(() => ({ status: 200, json: {} }));
+      const models = await new Refiner().listOllamaModels();
+
+      expect(models.map((m) => m.name)).toEqual(['gemma4:26b', 'phi3:latest']);
+      expect(sameOllamaModel('phi3', 'phi3:latest')).toBe(true);
+      expect(sameOllamaModel('gemma4', 'gemma4:26b')).toBe(false);
     });
   });
 

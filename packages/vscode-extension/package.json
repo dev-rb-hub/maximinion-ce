@@ -26,7 +26,7 @@
     "untrustedWorkspaces": {
       "supported": "limited",
       "description": "Secret warnings, Copy for AI, and sanitization work in Restricted Mode. Semantic folding cannot be enabled by workspace settings until the workspace is trusted.",
-      "restrictedConfigurations": ["maximinion.semanticFolding.enabled"]
+      "restrictedConfigurations": ["maximinion.semanticFolding.enabled", "maximinion.semanticFolding.model"]
     },
     "virtualWorkspaces": true
   },
@@ -283,14 +283,20 @@
             "type": "boolean",
             "default": false,
             "order": 2,
-            "markdownDescription": "Used by **Run Refiner on Active File**. Summarizes the file with a local [Ollama](https://ollama.com) model at `http://localhost:11434` to cut tokens further. Lossy: review the summary before relying on it. Requires Ollama to be running and **Entropy Scoring** to be enabled. Code is never sent to a remote service."
+            "markdownDescription": "Used by **Run Refiner on Active File**. Summarizes the file with a local [Ollama](https://ollama.com) model at `http://localhost:11434` to cut tokens further. Lossy: review the summary before relying on it. Requires Ollama to be running, the model in **Semantic Folding: Model** to be installed, and **Entropy Scoring** to be enabled. Code is never sent to a remote service."
+          },
+          "maximinion.semanticFolding.model": {
+            "type": "string",
+            "default": "phi3",
+            "order": 3,
+            "markdownDescription": "Ollama model used for semantic folding, for example `phi3`, `llama3.2`, or `gemma4:26b`. It must already be installed (`ollama pull <model>`); run `ollama list` to see installed models. If it is missing, the Refiner offers to switch to an installed model. Small models are fastest; thinking models run with thinking turned off."
           },
           "maximinion.manifest.exportFormat": {
             "type": "string",
             "enum": ["json", "markdown"],
             "enumDescriptions": ["Machine-readable report.", "Human-readable report."],
             "default": "json",
-            "order": 3,
+            "order": 4,
             "markdownDescription": "Format of the Refiner report written to the **MaxiMinion** output channel (View → Output → MaxiMinion)."
           }
         }
