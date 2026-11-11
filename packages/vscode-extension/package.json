@@ -289,7 +289,7 @@
             "type": "boolean",
             "default": false,
             "order": 2,
-            "markdownDescription": "Used by **Run Refiner on Active File**. Summarizes the file with a local [Ollama](https://ollama.com) model at `http://localhost:11434` to cut tokens further. Lossy: review the summary before relying on it. Requires Ollama to be running, the model in **Semantic Folding: Model** to be installed, and **Entropy Scoring** to be enabled. Code is never sent to a remote service.\n\nWhen you turn this on, MaxiMinion checks that Ollama is reachable and the model is installed. If the check fails, folding is turned off again and you're told how to fix it.\n\n[Test Setup](command:maximinion.testSemanticFolding) runs the check plus a sample fold, without turning folding on."
+            "markdownDescription": "**Off by default.** Tick to let **Run Refiner on Active File** summarize the file with a local [Ollama](https://ollama.com) model at `http://localhost:11434` to cut tokens further. Lossy: review the summary before relying on it. Requires Ollama to be running, the model in **Semantic Folding: Model** to be installed, and **Entropy Scoring** to be enabled. Code is never sent to a remote service.\n\nWhen you turn this on, MaxiMinion checks that Ollama is reachable and the model is installed. If the check fails, folding is turned off again and you're told how to fix it.\n\n[Test Setup](command:maximinion.testSemanticFolding) runs the check plus a sample fold, without turning folding on."
           },
           "maximinion.semanticFolding.model": {
             "type": "string",
