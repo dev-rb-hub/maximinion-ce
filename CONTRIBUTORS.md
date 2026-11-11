@@ -39,7 +39,7 @@ Any violations of this conduct will be addressed promptly by project maintainers
 - **Node.js:** v18+ (LTS recommended)
 - **npm:** v9+ (comes with Node.js)
 - **Git:** v2.30+ for version control
-- **TypeScript:** v5.3 (installed as dev dependency)
+- **TypeScript:** v7 (installed as a dev dependency; ts-jest uses the TypeScript 6 compatibility API)
 - **VS Code:** Optional but recommended (with TypeScript extension)
 
 ### Fork & Clone
