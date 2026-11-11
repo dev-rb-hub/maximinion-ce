@@ -124,20 +124,29 @@ const compressed = await refiner.fold(code);
 ## CLI Usage
 
 ```bash
-# Sanitize a file
-npx @maximinion/refiner --input ./src/app.ts
+# Sanitize a file (prints sanitized text, redacted secrets, and stats)
+npx @maximinion/refiner sanitize src/app.ts
 
-# Export to JSON
-npx @maximinion/refiner --input ./src --output result.json
+# Per-line entropy scores
+npx @maximinion/refiner entropy src/app.ts
 
-# With semantic folding
-npx @maximinion/refiner --input ./src --enable-folding --ollama-model mistral
+# Full pipeline (sanitize, entropy, block token counts); save via redirection
+npx @maximinion/refiner refine src/app.ts > refined.txt
 
-# Show detailed analysis
-npx @maximinion/refiner --input ./src --verbose
+# Refine all .ts/.js files directly in a directory (non-recursive; default ./src)
+npx @maximinion/refiner batch ./src
 
-# Custom secret pattern
-npx @maximinion/refiner --input ./src --add-pattern "MY_SECRET_.*"
+# Built-in demo / usage
+npx @maximinion/refiner demo
+npx @maximinion/refiner help
+```
+
+The CLI takes no flags. Semantic folding is disabled in the CLI, and custom
+secret patterns are programmatic only:
+
+```typescript
+const refiner = new Refiner({ enableSemanticFolding: true, ollamaModel: 'mistral' });
+refiner.addCustomSanitizationPattern('my-secret', 'MY_SECRET_\\w+', 'GENERIC_SECRET');
 ```
 
 ## Examples

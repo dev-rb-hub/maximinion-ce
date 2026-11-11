@@ -637,18 +637,20 @@ if (!session) {
 
 ## CLI Usage
 
-```bash
-# Start proxy server
-npx maximinion-proxy start --config ./config.json
+The Proxy Transport has no CLI (there is no `maximinion-proxy` command); use it
+programmatically (see [API/proxy-api.md](API/proxy-api.md)):
 
-# Dump manifest
-npx maximinion-proxy dump --manifest ./manifest.json --format markdown
+```typescript
+const proxy = new ProxyTransport();
+await proxy.initialize(manifest, nodeMap);
 
-# Query context
-npx maximinion-proxy query --node app.ts --tokens 4000
+// Query context
+const context = await proxy.getContextForNode(sessionId, 'app.ts', 4000);
 
-# Stream subscriptions
-npx maximinion-proxy stream --manifest-id myapp --watch
+// Stream subscriptions
+const subscriptionId = await proxy.subscribeToUpdates(sessionId, 'myapp', async (event, data) => {
+  console.log(event, data);
+});
 ```
 
 ---

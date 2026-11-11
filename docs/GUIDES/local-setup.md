@@ -55,19 +55,17 @@ npm test -- --coverage
 
 ## Step 5: Verify CLI Tools
 
+Only Phase 1 (The Refiner) ships a CLI:
+
 ```bash
 # Test Phase 1: The Refiner
-npx @maximinion/refiner --help
-
-# Test Phase 2: The Librarian
-npx @maximinion/librarian --help
-
-# Test Phase 3: Manifest Generator
-npx @maximinion/manifest-generator --help
-
-# Test Phase 4: Proxy Transport
-npx @maximinion/proxy-transport --help
+npx @maximinion/refiner help
+npx @maximinion/refiner demo
 ```
+
+The Librarian, Manifest Generator, and Proxy Transport are programmatic
+TypeScript APIs with no CLI; they are verified by the test suites in Step 4.
+See the [API reference](../API/) for usage.
 
 ## Optional: Semantic Folding with Ollama
 
@@ -81,8 +79,14 @@ ollama pull mistral
 # 3. Start Ollama
 ollama serve
 
-# 4. Test refiner with semantic folding
-npx @maximinion/refiner --input ./src --enable-semantic-folding --ollama-model mistral
+# 4. Test refiner with semantic folding (programmatic only; the CLI disables folding)
+```
+
+```typescript
+import { Refiner } from '@maximinion/refiner';
+
+const refiner = new Refiner({ enableSemanticFolding: true, ollamaModel: 'mistral' });
+const result = await refiner.refine(code);
 ```
 
 ## Development Workflow
@@ -172,10 +176,12 @@ npm test              # Re-run tests
 
 ### Issue: Port 3000 already in use (Proxy Transport)
 
-**Solution:** Use a different port:
+**Solution:** The Proxy Transport has no CLI and does not currently open a
+network listener, so it cannot cause this conflict. Its `serverPort` setting
+(default `3000`) is configuration only and can be changed programmatically:
 
-```bash
-npx @maximinion/proxy-transport --port 3001
+```typescript
+const proxy = new ProxyTransport({ serverPort: 3001 });
 ```
 
 ## VS Code Extensions (Recommended)

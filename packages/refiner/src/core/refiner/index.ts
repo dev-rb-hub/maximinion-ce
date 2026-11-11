@@ -184,8 +184,15 @@ export class Refiner {
   /**
    * Fold code only
    */
-  public async fold(code: string) {
-    return this.semanticFolder.fold(code);
+  public async fold(code: string, signal?: AbortSignal) {
+    return this.semanticFolder.fold(code, undefined, signal);
+  }
+
+  /**
+   * List models installed in the local Ollama instance (throws if Ollama is unreachable)
+   */
+  public async listOllamaModels(signal?: AbortSignal) {
+    return this.semanticFolder.listModels(signal);
   }
 
   /**
@@ -221,5 +228,5 @@ export class Refiner {
 // Export all related types and modules
 export { Sanitizer } from './sanitizer';
 export { EntropyCalculator } from './entropy-calculator';
-export { SemanticFolder } from './semantic-folder';
+export { SemanticFolder, sameOllamaModel } from './semantic-folder';
 export * from './types';

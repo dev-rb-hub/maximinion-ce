@@ -107,6 +107,8 @@ export class Sanitizer {
         type: patternConfig.type,
         pattern: patternName,
         location,
+        length: matched.length,
+        confidence: patternConfig.confidence,
         replacement
       });
 
@@ -225,6 +227,8 @@ export class Sanitizer {
           type: patternConfig.type,
           pattern: key,
           location: match.index,
+          length: match[0].length,
+          confidence: patternConfig.confidence,
           replacement: `[REDACTED_${patternConfig.type}]`
         });
       }

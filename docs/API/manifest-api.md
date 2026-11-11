@@ -118,31 +118,22 @@ const nodes = generator.query(manifest, {
 
 ## CLI Usage
 
-```bash
-# Generate manifest in Markdown
-npx @maximinion/manifest-generator \
-  --input ./src \
-  --format markdown \
-  --output MANIFEST.md
+The Manifest Generator has no CLI; use the programmatic API:
 
-# Generate as JSON for programmatic access
-npx @maximinion/manifest-generator \
-  --input ./src \
-  --format json \
-  --output manifest.json
+```typescript
+import { ManifestGenerator } from '@maximinion/manifest-generator';
+import * as fs from 'fs';
 
-# Query manifest
-npx @maximinion/manifest-generator \
-  --query "type:function name:handle.*" \
-  --manifest ./manifest.json
+const generator = new ManifestGenerator();
+// nodes: ManifestNode[], references: CrossReference[]
+const { manifest, nodeMap } = await generator.generate(nodes, references, 'my-app');
 
-# With Phase 1 & 2 integration
-npx @maximinion/refiner --input ./src --output refined.json && \
-npx @maximinion/librarian --input ./src --output graph.json && \
-npx @maximinion/manifest-generator \
-  --refiner refined.json \
-  --librarian graph.json \
-  --output manifest.md
+// Generate manifest in Markdown / JSON
+fs.writeFileSync('MANIFEST.md', generator.export(manifest, nodeMap, 'markdown'));
+fs.writeFileSync('manifest.json', generator.export(manifest, nodeMap, 'json'));
+
+// Query manifest
+const result = generator.query(manifest, nodeMap, { nodeType: 'function' });
 ```
 
 ## Export Formats

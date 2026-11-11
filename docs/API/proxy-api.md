@@ -214,23 +214,20 @@ session.stream((context) => {
 
 ## CLI Usage
 
-```bash
-# Start proxy server
-npx @maximinion/proxy-transport --port 3000
+The Proxy Transport has no CLI and does not currently open a network listener
+(no port or TLS options are applied). Use it in-process:
 
-# With manifest file
-npx @maximinion/proxy-transport \
-  --port 3000 \
-  --manifest ./MANIFEST.md
+```typescript
+import { ProxyTransport } from '@maximinion/proxy-transport';
 
-# With TLS
-npx @maximinion/proxy-transport \
-  --port 443 \
-  --tls-cert ./cert.pem \
-  --tls-key ./key.pem
+const proxy = new ProxyTransport();
+await proxy.initialize(manifest, nodeMap); // from ManifestGenerator.generate()
 
-# Show metrics
-npx @maximinion/proxy-transport --metrics
+// Show metrics
+console.log(proxy.getMetrics());
+console.log(proxy.getHealth());
+
+proxy.shutdown();
 ```
 
 ## Metrics

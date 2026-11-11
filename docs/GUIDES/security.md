@@ -71,12 +71,17 @@ MaxiMinion detects and removes:
 
 ### Custom Patterns
 
-```bash
-# Add custom secret pattern
-npx @maximinion/refiner --add-pattern "MY_SECRET_PREFIX_.*" --type "custom"
+Custom patterns are available programmatically only (the CLI has no flags):
 
-# Verify patterns
-npx @maximinion/refiner --list-patterns
+```typescript
+import { Refiner } from '@maximinion/refiner';
+
+const refiner = new Refiner();
+// addCustomSanitizationPattern(name, regexPattern, type, confidence?)
+refiner.addCustomSanitizationPattern('my-secret', 'MY_SECRET_PREFIX_\\w+', 'GENERIC_SECRET');
+
+// Verify the pattern is applied
+const { text, scrubbed } = refiner.sanitize('const k = "MY_SECRET_PREFIX_abc123";');
 ```
 
 ---
@@ -204,12 +209,14 @@ curl -X DELETE https://api.maximinion.ai/users/{user_id} \
 
 ### Community Edition
 
-```bash
-# Disable network access
-npx @maximinion/proxy-transport --disable-network
+The Proxy Transport has no CLI and runs in-process; it does not currently open
+a network port or socket. The HTTP/WebSocket switches can still be turned off
+explicitly in configuration:
 
-# Use local socket instead of port
-npx @maximinion/proxy-transport --socket /tmp/maximinion.sock
+```typescript
+import { ProxyTransport } from '@maximinion/proxy-transport';
+
+const proxy = new ProxyTransport({ enableHTTP: false, enableWebSocket: false });
 ```
 
 ### Professional/Enterprise
