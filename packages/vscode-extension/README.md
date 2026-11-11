@@ -88,9 +88,17 @@ All commands are in the Command Palette under **MaxiMinion:**.
 - MaxiMinion works in Restricted Mode (untrusted folders). Semantic folding can only be enabled from user settings until the workspace is trusted.
 - The Refiner preview contains only the refined text (no report wrapper), so it can be copied straight into an LLM prompt with minimal token overhead. Full run details are in the **MaxiMinion** output channel.
 
-## Install from source
+## Install
 
-The extension is not yet published to the Marketplace. From the repository root:
+Install **MaxiMinion** from the Extensions view (search "MaxiMinion"), or run:
+
+```bash
+code --install-extension maximinion.maximinion
+```
+
+### Build from source
+
+From the root of the [repository](https://github.com/dev-rb-hub/maximinion-ce):
 
 ```bash
 npm ci

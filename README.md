@@ -82,7 +82,7 @@ We transform your codebase into **high-density semantic payloads** via four prec
 - ✅ TypeScript strict mode, full type coverage
 - ✅ Comprehensive documentation with 12+ Mermaid diagrams
 - ✅ Dual-licensed (MIT Phase 1-4, Commercial Phase 5-6)
-- 🧩 VS Code extension 0.3.0: Copy for AI with token estimates, inline secret warnings, and local sanitization; Marketplace publication is pending
+- 🧩 VS Code extension 0.3.0 on the [Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=maximinion.maximinion): Copy for AI with token estimates, inline secret warnings, and local sanitization
 
 **Verified Capabilities:**
 - 🎯 **Privacy:** Pattern-based secret detection and redaction; review output before sharing
@@ -94,7 +94,18 @@ We transform your codebase into **high-density semantic payloads** via four prec
 
 ### Installation
 
-#### Option 1: VS Code Extension (Local VSIX)
+#### Option 1: VS Code Extension (Marketplace)
+
+Install **MaxiMinion** from the [Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=maximinion.maximinion), search for "MaxiMinion" in the Extensions view, or run:
+
+```bash
+code --install-extension maximinion.maximinion
+```
+
+It adds **Copy for AI** (sanitized, token-estimated copy of a selection, file, or Explorer selection), a status bar token counter, and inline secret warnings with a redact quick fix. Run **MaxiMinion: Get Started & Help** for a short walkthrough; see [its README](packages/vscode-extension/README.md) for details.
+
+To build and install the extension from source instead:
+
 ```bash
 npm ci
 npm run build
@@ -102,9 +113,9 @@ npm run package --workspace packages/vscode-extension
 code --install-extension packages/vscode-extension/maximinion-<version>.vsix
 ```
 
-Replace `<version>` with the version in [packages/vscode-extension/package.json](packages/vscode-extension/package.json). The extension is not published to the Marketplace yet. It adds **Copy for AI** (sanitized, token-estimated copy of a selection, file, or Explorer selection), a status bar token counter, and inline secret warnings with a redact quick fix; see [its README](packages/vscode-extension/README.md).
+Replace `<version>` with the version in [packages/vscode-extension/package.json](packages/vscode-extension/package.json).
 
-To prepare a release, run the **VS Code Extension Release** GitHub Actions workflow. It packages a versioned VSIX by default; publishing requires selecting the publish option and configuring the `VSCE_PAT` repository secret. Azure DevOps global PATs are scheduled for retirement on December 1, 2026, so migrate the publishing credential before then.
+To release, run the **VS Code Extension Release** GitHub Actions workflow. It packages a versioned VSIX and creates a GitHub prerelease. Publishing requires selecting the publish option, the `VSCE_PAT` secret on the `vscode-marketplace` environment, and approval of that environment's deployment. Azure DevOps global PATs are scheduled for retirement on December 1, 2026, so migrate the publishing credential before then.
 
 #### Option 2: Refiner CLI
 Only `@maximinion/refiner` ships a command-line tool (`refiner`):
@@ -316,7 +327,7 @@ npm run build  # Compile all packages
 | Lines of Code | ~8,000 |
 | Dependencies | 548 packages audited, 0 known vulnerabilities |
 | License | MIT (Community), Commercial (Enterprise) |
-| VS Code Extension | 0.3.0 local VSIX; Marketplace publication pending |
+| VS Code Extension | 0.3.0 on the [Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=maximinion.maximinion) |
 
 ---
 
@@ -326,7 +337,7 @@ npm run build  # Compile all packages
 |----------|------|
 | **GitHub** | [dev-rb-hub/maximinion-ce](https://github.com/dev-rb-hub/maximinion-ce) |
 | **npm Package** | [@maximinion/refiner](https://www.npmjs.com/package/@maximinion/refiner) |
-| **VS Code Extension** | Marketplace publication pending; [build and install the VSIX](packages/vscode-extension/README.md) |
+| **VS Code Extension** | [MaxiMinion on the Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=maximinion.maximinion) |
 | **Documentation** | [docs/index.md](docs/index.md) |
 | **Issues & Bugs** | [GitHub Issues](https://github.com/dev-rb-hub/maximinion-ce/issues) |
 | **Discussions** | [GitHub Discussions](https://github.com/dev-rb-hub/maximinion-ce/discussions) |
@@ -386,7 +397,7 @@ MaxiMinion.AI stands on the shoulders of giants:
 
 ---
 
-**Status:** Core tests pass; VS Code extension is a local 0.3.0 VSIX, Marketplace publication pending
+**Status:** Core tests pass; VS Code extension 0.3.0 is published on the Visual Studio Marketplace
 
 **Last Updated:** 2026-11-11  
 **Maintained By:** MaxiMinion.AI Team
