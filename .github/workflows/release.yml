@@ -51,6 +51,10 @@ jobs:
       - name: Stage packages for review
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          # Signs a provenance attestation (Sigstore) linking each package to this
+          # workflow run and commit. Needs `id-token: write` and a package.json
+          # `repository` that matches this GitHub repository.
+          NPM_CONFIG_PROVENANCE: 'true'
         run: |
           set -o pipefail
 

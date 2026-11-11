@@ -18,6 +18,15 @@
   ],
   "author": "Maximinion AI",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dev-rb-hub/maximinion-ce.git",
+    "directory": "packages/manifest-generator"
+  },
+  "homepage": "https://github.com/dev-rb-hub/maximinion-ce/tree/main/packages/manifest-generator#readme",
+  "bugs": {
+    "url": "https://github.com/dev-rb-hub/maximinion-ce/issues"
+  },
   "dependencies": {
     "@maximinion/refiner": "^0.2.0",
     "@maximinion/librarian": "^0.3.0"

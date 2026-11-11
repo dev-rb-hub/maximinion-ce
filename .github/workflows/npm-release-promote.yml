@@ -24,6 +24,11 @@ on:
         description: Version that was approved (for example, 0.1.2)
         required: true
         type: string
+      allow_missing_provenance:
+        description: Allow promoting a version published before provenance was enabled
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: write
@@ -49,6 +54,25 @@ jobs:
             exit 1
           fi
           echo "Confirmed @maximinion/${{ inputs.package }}@${{ inputs.version }} is live."
+
+      # Releases published before provenance was enabled (refiner <= 0.2.1 and the
+      # 0.3.0/0.4.0/0.5.0 libraries) have no attestation; set allow_missing_provenance
+      # to promote those. Anything newer must carry a verified provenance attestation.
+      - name: Verify signatures and provenance
+        if: ${{ !inputs.allow_missing_provenance }}
+        run: |
+          pkg="@maximinion/${{ inputs.package }}@${{ inputs.version }}"
+          attestations=$(npm view "$pkg" dist.attestations.provenance.predicateType 2>/dev/null || true)
+          if [ -z "$attestations" ]; then
+            echo "::error::$pkg has no provenance attestation. It was not published by the Release workflow with provenance enabled."
+            exit 1
+          fi
+          workdir=$(mktemp -d)
+          cd "$workdir"
+          npm init -y >/dev/null
+          npm install --no-audit --no-fund "$pkg" >/dev/null
+          npm audit signatures
+          echo "Verified registry signature and provenance ($attestations) for $pkg."
 
       - name: Promote GitHub Release
         env:

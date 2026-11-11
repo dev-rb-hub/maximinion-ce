@@ -37,6 +37,15 @@
   ],
   "author": "",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dev-rb-hub/maximinion-ce.git",
+    "directory": "packages/refiner"
+  },
+  "homepage": "https://github.com/dev-rb-hub/maximinion-ce/tree/main/packages/refiner#readme",
+  "bugs": {
+    "url": "https://github.com/dev-rb-hub/maximinion-ce/issues"
+  },
   "dependencies": {
     "ollama": "^0.5.0"
   },
