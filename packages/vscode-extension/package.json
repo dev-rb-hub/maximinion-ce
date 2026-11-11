@@ -1,8 +1,8 @@
 {
   "name": "maximinion",
   "displayName": "MaxiMinion",
-  "description": "Sanitize secrets from the active editor without changing the source file.",
-  "version": "0.2.0",
+  "description": "Local-first secret redaction and token counts for sharing code with AI assistants. Sanitize, compact, and copy files for LLM chats without changing your source.",
+  "version": "0.3.0",
   "publisher": "maximinion",
   "private": true,
   "license": "MIT",
@@ -19,17 +19,18 @@
   "engines": {
     "vscode": "^1.74.0"
   },
-  "categories": ["Other"],
-  "activationEvents": [
-    "onCommand:maximinion.sanitizeActiveFile",
-    "onCommand:maximinion.copySanitizedActiveFile",
-    "onCommand:maximinion.runRefinerOnActiveFile",
-    "onCommand:maximinion.openSettings",
-    "onView:maximinion.sidebar"
-  ],
+  "categories": ["AI", "Linters", "Other"],
+  "keywords": ["ai", "llm", "copilot", "chatgpt", "prompt", "context", "tokens", "secrets", "redact", "privacy"],
+  "activationEvents": ["onStartupFinished"],
   "main": "./dist/extension.js",
   "contributes": {
     "commands": [
+      {
+        "command": "maximinion.copyForAI",
+        "title": "Copy for AI (Sanitized)",
+        "category": "MaxiMinion",
+        "icon": "$(copy)"
+      },
       {
         "command": "maximinion.sanitizeActiveFile",
         "title": "Sanitize Active File",
@@ -62,9 +63,21 @@
       ],
       "editor/context": [
         {
+          "command": "maximinion.copyForAI",
+          "when": "editorTextFocus",
+          "group": "9_cutcopypaste@99"
+        },
+        {
           "command": "maximinion.copySanitizedActiveFile",
           "when": "editorTextFocus",
           "group": "1_modification"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "maximinion.copyForAI",
+          "when": "!explorerResourceIsFolder",
+          "group": "6_copypath@99"
         }
       ],
       "view/title": [
@@ -75,6 +88,14 @@
         }
       ]
     },
+    "keybindings": [
+      {
+        "command": "maximinion.copyForAI",
+        "key": "ctrl+shift+alt+m",
+        "mac": "cmd+shift+alt+m",
+        "when": "editorTextFocus"
+      }
+    ],
     "viewsContainers": {
       "activitybar": [
         {
@@ -116,6 +137,34 @@
           "enum": ["json", "markdown"],
           "default": "json",
           "description": "Export format used when generating manifests."
+        },
+        "maximinion.tokenBudget": {
+          "type": "number",
+          "default": 8000,
+          "minimum": 0,
+          "description": "Estimated token budget for Copy for AI and the status bar indicator. Set to 0 to disable budget warnings. Estimates use ~4 characters per token."
+        },
+        "maximinion.copyForAI.compactWhitespace": {
+          "type": "boolean",
+          "default": true,
+          "description": "Remove trailing whitespace (except in Markdown) and collapse repeated blank lines in Copy for AI output."
+        },
+        "maximinion.statusBar.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show the estimated token count for the active file or selection in the status bar."
+        },
+        "maximinion.secretDiagnostics.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show inline warnings for likely secrets in open files, with a quick fix to redact them."
+        },
+        "maximinion.secretDiagnostics.minConfidence": {
+          "type": "number",
+          "default": 0.75,
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Minimum pattern confidence (0-1) for inline secret warnings. Raise it to reduce false positives."
         }
       }
     }
@@ -129,7 +178,7 @@
     "dev": "npm run build && code --extensionDevelopmentPath=%cd% --new-window"
   },
   "devDependencies": {
-    "@maximinion/refiner": "^0.2.0",
+    "@maximinion/refiner": "^0.2.1",
     "@types/vscode": "^1.74.0",
     "@types/jest": "^29.5.0",
     "@typescript/native": "npm:typescript@^7.0.2",

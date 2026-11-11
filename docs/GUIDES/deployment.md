@@ -22,28 +22,40 @@ Complete guide for deploying MaxiMinion.AI in production environments.
 ### Installation
 
 ```bash
-npm install -g @maximinion/refiner @maximinion/librarian \
-  @maximinion/manifest-generator @maximinion/proxy-transport
+# CLI (only the Refiner ships a command-line tool)
+npm install -g @maximinion/refiner
+
+# Libraries (programmatic TypeScript APIs, no CLI)
+npm install @maximinion/librarian @maximinion/manifest-generator \
+  @maximinion/proxy-transport
 ```
 
 ### Usage
 
 ```bash
-# Phase 1: Sanitize code
-npx @maximinion/refiner --input ./src --output refined.json
+# Phase 1: Sanitize / refine code (output goes to stdout)
+npx @maximinion/refiner refine src/app.ts > refined.txt
+npx @maximinion/refiner batch ./src > refined-batch.txt
+```
 
-# Phase 2: Analyze dependencies
-npx @maximinion/librarian --input ./src --output graph.json
+Phases 2–4 are used from TypeScript (see [API reference](../API/)):
 
-# Phase 3: Generate manifest
-npx @maximinion/manifest-generator \
-  --input ./src \
-  --refiner-output refined.json \
-  --librarian-output graph.json \
-  --format markdown
+```typescript
+import { Librarian } from '@maximinion/librarian';
+import { ManifestGenerator } from '@maximinion/manifest-generator';
+import { ProxyTransport } from '@maximinion/proxy-transport';
 
-# Phase 4: Start proxy
-npx @maximinion/proxy-transport --port 3000 --manifest ./manifest.md
+// Phase 2: Analyze dependencies
+const analysis = await new Librarian().analyze('./src');
+
+// Phase 3: Generate manifest from your ManifestNode[] / CrossReference[]
+const generator = new ManifestGenerator();
+const { manifest, nodeMap } = await generator.generate(nodes, references, 'my-app');
+const markdown = generator.export(manifest, nodeMap, 'markdown');
+
+// Phase 4: Serve context in-process
+const proxy = new ProxyTransport();
+await proxy.initialize(manifest, nodeMap);
 ```
 
 ### Data Retention

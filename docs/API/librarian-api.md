@@ -133,21 +133,22 @@ clusters.forEach(cluster => {
 
 ## CLI Usage
 
-```bash
-# Analyze a codebase
-npx @maximinion/librarian --input ./src
+The Librarian has no CLI; use the programmatic API:
 
-# Export to JSON
-npx @maximinion/librarian --input ./src --output graph.json
+```typescript
+import { Librarian } from '@maximinion/librarian';
+import * as fs from 'fs';
 
-# Find critical path
-npx @maximinion/librarian --input ./src --critical-path
+const librarian = new Librarian();
+const analysis = await librarian.analyze('./src');
 
-# Detect clusters
-npx @maximinion/librarian --input ./src --detect-clusters
+// Export to JSON
+fs.writeFileSync('graph.json', JSON.stringify(analysis.graph, null, 2));
 
-# Show statistics
-npx @maximinion/librarian --input ./src --statistics
+// Critical paths, clusters, and statistics
+console.log(analysis.criticalPaths);
+console.log(analysis.clusters);
+console.log(librarian.getSummary(analysis));
 ```
 
 ## Examples

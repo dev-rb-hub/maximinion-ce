@@ -4,6 +4,7 @@
  */
 
 import { Refiner, Sanitizer, EntropyCalculator, SemanticFolder } from '../src/core/refiner';
+import { estimateTokenCount } from '../src';
 
 describe('Phase 1: THE REFINER - Unit Tests', () => {
   describe('Sanitizer', () => {
@@ -41,6 +42,20 @@ describe('Phase 1: THE REFINER - Unit Tests', () => {
       const detected = sanitizer.detectSecrets(text);
       expect(detected.length).toBeGreaterThan(0);
       expect(detected[0].type).toBe('AWS_KEY');
+    });
+
+    test('should report the exact range of each detected secret', () => {
+      const text = 'const key = AKIA3Z5Z5Z5Z5Z5Z5Z5Z5;';
+      const [first] = sanitizer.detectSecrets(text);
+      expect(first.length).toBeGreaterThan(0);
+      const matched = text.slice(first.location, first.location + first.length!);
+      expect(matched).toMatch(/^AKIA/);
+      expect(sanitizer.sanitize(text).scrubbed[0].length).toBe(first.length);
+      expect(first.confidence).toBeGreaterThan(0.9);
+    });
+
+    test('should expose token counting utilities from the package entry point', () => {
+      expect(estimateTokenCount('const a = 1;')).toBeGreaterThan(0);
     });
 
     test('should check if text contains secrets', () => {

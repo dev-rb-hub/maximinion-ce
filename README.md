@@ -3,7 +3,7 @@
 MaxiMinion.AI - the operational research engine for Context Window Management and Token Economics
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Tests: 109/109 Passing](https://img.shields.io/badge/Tests-109%2F109-brightgreen.svg)](#)
+[![Tests: 141/141 Passing](https://img.shields.io/badge/Tests-141%2F141-brightgreen.svg)](#)
 [![Engine: Operations Research](https://img.shields.io/badge/Engine-Operations%20Research-blue.svg)](#)
 [![Focus: Signal-to-Noise Ratio](https://img.shields.io/badge/Focus-SNR%20Optimization-green.svg)](#)
 [![Node.js: 18+](https://img.shields.io/badge/Node.js-18%2B-darkgreen.svg)](#)
@@ -40,9 +40,9 @@ We transform your codebase into **high-density semantic payloads** via four prec
 - Remove secrets (16+ patterns: API keys, passwords, PII)
 - Measure entropy (Shannon H) to identify noise
 - Compress via semantic folding (Ollama LLM integration)
-- **Result:** 20-30% token reduction, zero information loss
+- **Goal:** fewer tokens spent on boilerplate and no secrets in prompts (semantic folding is optional and lossy; review output before sharing)
 
-📖 [Learn More →](PHASE_1.md) | 🧪 Tests: 31/31 ✅
+📖 [Learn More →](docs/PHASE_1.md) | 🧪 Tests: 33/33 ✅
 
 ### Phase 2️⃣ : The Librarian 📚
 **Dependency Graph Analysis & Importance Scoring**
@@ -50,9 +50,9 @@ We transform your codebase into **high-density semantic payloads** via four prec
 - Calculate centrality (PageRank 40%, Betweenness 30%, Closeness 15%)
 - Rank components by actual importance
 - Identify critical paths and bottlenecks
-- **Result:** Know exactly which code matters
+- **Goal:** identify which code matters most for a task
 
-📖 [Learn More →](PHASE_2.md) | 🧪 Tests: 16/16 ✅
+📖 [Learn More →](docs/PHASE_2.md) | 🧪 Tests: 16/16 ✅
 
 ### Phase 3️⃣ : Manifest Generator 📋
 **Hierarchical Documentation & Multi-Format Export**
@@ -60,9 +60,9 @@ We transform your codebase into **high-density semantic payloads** via four prec
 - Resolve cross-references with cycle detection
 - Export to JSON, YAML, Markdown, HTML
 - Generate queryable manifests
-- **Result:** 80-90% overall compression, full semantic structure preserved
+- **Goal:** compact, structured context maps (compression varies by codebase)
 
-📖 [Learn More →](PHASE_3.md) | 🧪 Tests: 25/25 ✅
+📖 [Learn More →](docs/PHASE_3.md) | 🧪 Tests: 25/25 ✅
 
 ### Phase 4️⃣ : Proxy Transport Foundations 🚀
 **Context Selection and Transport APIs**
@@ -70,23 +70,23 @@ We transform your codebase into **high-density semantic payloads** via four prec
 - IDE adapter interfaces; live VS Code and JetBrains integrations are not implemented yet
 - **Result:** TypeScript APIs for context queries and transport integration
 
-📖 [Learn More →](PHASE_4.md) | 🧪 Tests: 34/34 ✅
+📖 [Learn More →](docs/PHASE_4.md) | 🧪 Tests: 34/34 ✅
 
 ---
 
 ## 📊 Verified Results
 
 **Current Workspace Status:**
-- ✅ 109/109 unit tests passing across five workspaces
+- ✅ 141/141 unit tests passing across five workspaces
 - ✅ 548 packages audited, 0 known vulnerabilities
 - ✅ TypeScript strict mode, full type coverage
 - ✅ Comprehensive documentation with 12+ Mermaid diagrams
 - ✅ Dual-licensed (MIT Phase 1-4, Commercial Phase 5-6)
-- 🧩 VS Code extension MVP sanitizes the active file locally; Marketplace publication is not available yet
+- 🧩 VS Code extension 0.3.0: Copy for AI with token estimates, inline secret warnings, and local sanitization; Marketplace publication is pending
 
 **Verified Capabilities:**
 - 🎯 **Privacy:** Pattern-based secret detection and redaction; review output before sharing
-- 🎯 **Extension:** Active-file preview and clipboard sanitization run locally
+- 🎯 **Extension:** Copy for AI, token estimates, inline secret warnings, and sanitization all run locally
 
 ---
 
@@ -99,19 +99,17 @@ We transform your codebase into **high-density semantic payloads** via four prec
 npm ci
 npm run build
 npm run package --workspace packages/vscode-extension
-code --install-extension packages/vscode-extension/maximinion-0.1.0.vsix
+code --install-extension packages/vscode-extension/maximinion-<version>.vsix
 ```
 
-The extension is not published to the Marketplace yet. It provides local active-file sanitization; see [its README](packages/vscode-extension/README.md).
+Replace `<version>` with the version in [packages/vscode-extension/package.json](packages/vscode-extension/package.json). The extension is not published to the Marketplace yet. It adds **Copy for AI** (sanitized, token-estimated copy of a selection, file, or Explorer selection), a status bar token counter, and inline secret warnings with a redact quick fix; see [its README](packages/vscode-extension/README.md).
 
 To prepare a release, run the **VS Code Extension Release** GitHub Actions workflow. It packages a versioned VSIX by default; publishing requires selecting the publish option and configuring the `VSCE_PAT` repository secret. Azure DevOps global PATs are scheduled for retirement on December 1, 2026, so migrate the publishing credential before then.
 
-#### Option 2: npm CLI Tool
+#### Option 2: Refiner CLI
+Only `@maximinion/refiner` ships a command-line tool (`refiner`):
 ```bash
-npm install -g @maximinion/refiner
-npm install -g @maximinion/librarian
-npm install -g @maximinion/manifest-generator
-npm install -g @maximinion/proxy-transport
+npm install -g @maximinion/refiner   # or use npx @maximinion/refiner <command>
 ```
 
 #### Option 3: npm Packages (programmatic)
@@ -122,24 +120,29 @@ npm install @maximinion/refiner @maximinion/librarian @maximinion/manifest-gener
 ### First Use
 
 ```bash
-# Sanitize your code (remove secrets, compress)
-npx @maximinion/refiner --input ./src --output ./refined.json
+# Sanitize a file (prints redacted text and a list of removed secrets)
+npx @maximinion/refiner sanitize src/app.ts
 
-# Analyze dependencies and rank importance
-npx @maximinion/librarian --input ./src --output ./graph.json
+# Full refinement pipeline; output goes to stdout
+npx @maximinion/refiner refine src/app.ts > refined.txt
 
-# Generate hierarchical documentation
-npx @maximinion/manifest-generator \
-  --input ./src \
-  --refiner-output ./refined.json \
-  --librarian-output ./graph.json \
-  --format markdown \
-  --output ./MANIFEST.md
+# Refine every .ts/.js file in a directory (non-recursive)
+npx @maximinion/refiner batch ./src
 
-# Start proxy server for IDE integration
-npx @maximinion/proxy-transport --port 3000 --manifest ./MANIFEST.md
+# Try it on built-in sample code
+npx @maximinion/refiner demo
 ```
 
+The Librarian, Manifest Generator, and Proxy Transport are TypeScript libraries without a CLI:
+
+```typescript
+import { Librarian } from '@maximinion/librarian';
+
+const analysis = await new Librarian().analyze('./src');
+console.log(analysis.rankedNodes.slice(0, 10)); // most central components first
+```
+
+See the [API reference](docs/API/) and [examples](docs/EXAMPLES/) for manifest generation and context transport.
 ---
 
 ## 📚 Documentation
@@ -191,7 +194,8 @@ npx @maximinion/proxy-transport --port 3000 --manifest ./MANIFEST.md
 | Remove secrets from code | Phase 1 | 5 min |
 | Understand code structure | Phase 2 | 15 min |
 | Generate documentation | Phase 3 | 20 min |
-| Sanitize the active file in VS Code | Phase 1 + extension MVP | 1 min |
+| Sanitize the active file in VS Code | Phase 1 + extension | 1 min |
+| Copy files for an AI chat with secrets redacted and token estimates | Phase 1 + extension | 1 min |
 | Deploy for team | Phase 4 + hosting | 1-2 hours |
 
 ---
@@ -201,7 +205,7 @@ npx @maximinion/proxy-transport --port 3000 --manifest ./MANIFEST.md
 ### Community Edition (Free)
 - ✅ Core libraries for Phases 1-4
 - ✅ MIT License (perpetual)
-- ✅ CLI tools + local VS Code sanitizer MVP
+- ✅ Refiner CLI + local VS Code extension (Copy for AI, token estimates, inline secret warnings)
 - ✅ Local deployment only
 - 📍 **For:** Individuals, open-source projects, evaluation
 
@@ -229,10 +233,10 @@ npx @maximinion/proxy-transport --port 3000 --manifest ./MANIFEST.md
 
 ## 🔒 Security & Compliance
 
-- **Privacy:** Zero secrets leakage (16+ pattern detection)
+- **Privacy:** Pattern-based secret detection (17 patterns); detection is not exhaustive, so review output before sharing
 - **Data:** No codebase sent to 3rd parties (runs locally by default)
 - **Licensing:** MIT (Community) + Commercial dual-license (Enterprise features)
-- **Compliance:** HIPAA, SOC2, GDPR-ready (Enterprise)
+- **Compliance:** Community Edition makes no compliance certification claims; compliance support is planned for commercial editions
 
 📖 [Security Details →](ARCHITECTURE.md#security-architecture)
 
@@ -253,9 +257,21 @@ npx @maximinion/proxy-transport --port 3000 --manifest ./MANIFEST.md
 
 ## 📈 Roadmap
 
+### Community Edition (free, MIT)
+
+| Status | Item | Issue |
+|--------|------|-------|
+| ✅ 0.3.0 | Marketplace readiness: accurate docs and Quick Start, AS IS notices, listing metadata | [#30](https://github.com/dev-rb-hub/maximinion-ce/issues/30) |
+| ✅ 0.3.0 | Copy for AI with token estimates, budget warnings, and status bar counter | [#34](https://github.com/dev-rb-hub/maximinion-ce/issues/34) |
+| ✅ 0.3.0 | Inline secret warnings with a redact quick fix | [#31](https://github.com/dev-rb-hub/maximinion-ce/issues/31) |
+| 🔜 Next | Workspace context pack: Librarian ranking in the sidebar, token-budget selection, manifest sync on save | [#32](https://github.com/dev-rb-hub/maximinion-ce/issues/32) |
+| 🔜 Next | Copilot Chat / MCP integration on top of Proxy Transport | [#33](https://github.com/dev-rb-hub/maximinion-ce/issues/33) |
+
+### Core libraries and commercial editions
+
 **Phase 1-3:** Core libraries implemented and covered by unit tests
 
-**Phase 4:** Context and transport foundations implemented; live IDE integration remains future work. The VS Code extension currently provides local active-file sanitization only.
+**Phase 4:** Context and transport foundations implemented; live IDE integration remains future work (see [#33](https://github.com/dev-rb-hub/maximinion-ce/issues/33)).
 
 **Phase 5: The Evaluator** (2026)
 - Quality metrics & LLM reasoning scoring
@@ -294,13 +310,13 @@ npm run build  # Compile all packages
 
 | Metric | Value |
 |--------|-------|
-| Tests Passing | 109/109 ✅ |
+| Tests Passing | 141/141 ✅ |
 | Type Coverage | 100% (strict mode) |
 | Packages | 4 core libraries + VS Code extension |
 | Lines of Code | ~8,000 |
 | Dependencies | 548 packages audited, 0 known vulnerabilities |
 | License | MIT (Community), Commercial (Enterprise) |
-| VS Code Extension | 0.1.0 local VSIX; Marketplace publication pending |
+| VS Code Extension | 0.3.0 local VSIX; Marketplace publication pending |
 
 ---
 
@@ -370,9 +386,9 @@ MaxiMinion.AI stands on the shoulders of giants:
 
 ---
 
-**Status:** Core tests pass; VS Code extension is a local 0.1.0 VSIX, Marketplace publication pending
+**Status:** Core tests pass; VS Code extension is a local 0.3.0 VSIX, Marketplace publication pending
 
-**Last Updated:** 2026-09-24  
+**Last Updated:** 2026-11-11  
 **Maintained By:** MaxiMinion.AI Team
 
 **Questions?** Open an issue in the [Community Edition repository](https://github.com/dev-rb-hub/maximinion-ce/issues).

@@ -409,18 +409,18 @@ Connected component finding with size constraints:
 
 ## CLI Usage
 
-```bash
-# Generate manifest from codebase
-npx ts-node src/cli.ts analyze ./src
+The Manifest Generator has no CLI; use it programmatically (see the
+[API Example](#api-example) below and [API/manifest-api.md](API/manifest-api.md)):
 
-# Export to Markdown
-npx ts-node src/cli.ts analyze ./src --format markdown
+```typescript
+const { manifest, nodeMap } = await generator.generate(nodes, references, 'my-app');
 
-# Detect circular dependencies only
-npx ts-node src/cli.ts cycles ./src
+// Export to Markdown
+const markdown = generator.export(manifest, nodeMap, 'markdown');
 
-# Generate critical paths report
-npx ts-node src/cli.ts critical-paths ./src
+// Circular dependencies and critical paths
+console.log(manifest.circularDependencies);
+console.log(manifest.criticalPaths);
 ```
 
 ## API Example

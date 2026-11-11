@@ -186,27 +186,27 @@ flowchart LR
 ### Use Case 1: "I want to clean up my code for LLM context"
 1. Start: [README.md](../README.md) - Overview
 2. Learn: [PHASE_1.md](PHASE_1.md) - Sanitization & entropy
-3. Try: CLI tool - `npx @maximinion/refiner --input ./src`
+3. Try: CLI tool - `npx @maximinion/refiner refine src/app.ts` (or `batch ./src`)
 4. Reference: [PHASE_1.md](PHASE_1.md#configuration) - Custom patterns
 
 ### Use Case 2: "I want to understand my codebase structure"
 1. Start: [README.md](../README.md) - Overview
 2. Learn: [PHASE_2.md](PHASE_2.md) - Graph analysis
-3. Try: CLI tool - `npx @maximinion/librarian --input ./src`
+3. Try: Programmatic API (no CLI) - `await new Librarian().analyze('./src')` — see [librarian-api.md](API/librarian-api.md)
 4. Deep Dive: [ARCHITECTURE.md](../ARCHITECTURE.md#phase-2-the-librarian) - Algorithms
 5. Reference: [PHASE_2.md](PHASE_2.md#centrality-algorithms) - API details
 
 ### Use Case 3: "I want to generate codebase documentation"
 1. Start: [README.md](../README.md) - Overview
 2. Learn: [PHASE_3.md](PHASE_3.md) - Manifest generation
-3. Try: CLI tool - `npx @maximinion/manifest-generator --input ./src --format markdown`
+3. Try: Programmatic API (no CLI) - `new ManifestGenerator().generate(nodes, references)` then `export(..., 'markdown')` — see [manifest-api.md](API/manifest-api.md)
 4. Deep Dive: [PHASE_3.md](PHASE_3.md#multi-format-export) - Export formats
 5. Reference: [PHASE_3.md](PHASE_3.md#export-formats) - Format-specific details
 
 ### Use Case 4: "I want to integrate context into my IDE"
 1. Start: [README.md](../README.md) - Overview
 2. Learn: [PHASE_4.md](PHASE_4.md) - Proxy transport foundations
-3. Try: [VS Code sanitizer MVP](../packages/vscode-extension/README.md) - Build and install a local VSIX
+3. Try: [VS Code extension](../packages/vscode-extension/README.md) - Build and install a local VSIX for Copy for AI, token estimates, and inline secret warnings
 4. Note: Marketplace publishing and live context injection are not available yet
 5. Advanced: [ARCHITECTURE.md](../ARCHITECTURE.md#phase-4-proxy-transport) - Planned integration architecture
 
@@ -349,7 +349,7 @@ packages/                        # Source code (5 packages)
 ├── librarian/
 ├── manifest-generator/
 ├── proxy-transport/
-└── vscode-extension/            # Local VS Code sanitizer MVP
+└── vscode-extension/            # Local VS Code extension (Copy for AI, secret warnings)
 ```
 
 ---
@@ -372,7 +372,7 @@ packages/                        # Source code (5 packages)
 
 **Phases 1-3:** Core libraries implemented and covered by unit tests
 
-**Phase 4:** Context and transport foundations; live IDE integration remains future work. The VS Code extension is currently a local sanitizer MVP.
+**Phase 4:** Context and transport foundations; live IDE integration remains future work. The VS Code extension runs locally and provides Copy for AI, token estimates, inline secret warnings, and sanitization.
 
 **Phase 5: The Evaluator** (Year 2)
 - Context quality metrics
@@ -424,7 +424,7 @@ A: See [Learning Path](#-learning-path) below.
 **Beginner (1-2 hours)**
 1. [README.md](../README.md) - Understand the problem
 2. [PHASE_1.md](PHASE_1.md) - Learn about sanitization
-3. Try CLI: `npx @maximinion/refiner --help`
+3. Try CLI: `npx @maximinion/refiner help` (then `npx @maximinion/refiner demo`)
 
 **Intermediate (3-6 hours)**
 1. [PHASE_2.md](PHASE_2.md) - Graph analysis

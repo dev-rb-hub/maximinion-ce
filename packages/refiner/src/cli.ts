@@ -12,28 +12,44 @@ import { Refiner } from './core/refiner';
 const args = process.argv.slice(2);
 const command = args[0];
 
+const CE_NOTICE =
+  'MaxiMinion.AI Community Edition is provided completely free of charge for evaluation and individual use. ' +
+  'It does not constitute the supply of a good or service in trade or commerce under the Australian Consumer Law. ' +
+  "The software is provided 'AS IS' without warranties of any kind. " +
+  'Secret detection is pattern-based; review output before sharing it.';
+
 const showHelp = () => {
   console.log(`
 MaxiMinion.AI Phase 1: THE REFINER - CLI Tool
 
 Usage:
-  npx ts-node src/cli.ts [command] [options]
+  npx @maximinion/refiner <command> [file|directory]
+  refiner <command> [file|directory]      (after: npm install -g @maximinion/refiner)
 
 Commands:
   sanitize <file>          Sanitize code file (remove secrets)
   entropy <file>           Calculate entropy scores for code
   refine <file>            Full refinement pipeline
-  batch <directory>        Refine all .ts/.js files in directory
+  batch [directory]        Refine all .ts/.js files in a directory (default: ./src)
   demo                     Run demonstration with sample code
   help                     Show this help message
 
 Examples:
-  npx ts-node src/cli.ts sanitize src/example.ts
-  npx ts-node src/cli.ts entropy src/example.ts
-  npx ts-node src/cli.ts refine src/example.ts
-  npx ts-node src/cli.ts batch ./src
-  npx ts-node src/cli.ts demo
+  npx @maximinion/refiner sanitize src/example.ts
+  npx @maximinion/refiner entropy src/example.ts
+  npx @maximinion/refiner refine src/example.ts > refined.txt
+  npx @maximinion/refiner batch ./src
+  npx @maximinion/refiner demo
   `);
+};
+
+const requireFileArg = (filePath: string | undefined): string => {
+  if (!filePath) {
+    console.error(`Missing <file> argument for "${command}".`);
+    showHelp();
+    process.exit(1);
+  }
+  return filePath;
 };
 
 const readFile = (filePath: string): string => {
@@ -218,7 +234,10 @@ const result = quickSort([5, 2, 8, 1, 9]);
 };
 
 const main = async () => {
-  if (!command || command === 'help') {
+  // stderr keeps the notice out of redirected stdout output.
+  console.error(`${CE_NOTICE}\n`);
+
+  if (!command || command === 'help' || command === '--help' || command === '-h') {
     showHelp();
     return;
   }
@@ -226,13 +245,13 @@ const main = async () => {
   try {
     switch (command) {
       case 'sanitize':
-        await sanitizeCommand(args[1]);
+        await sanitizeCommand(requireFileArg(args[1]));
         break;
       case 'entropy':
-        await entropyCommand(args[1]);
+        await entropyCommand(requireFileArg(args[1]));
         break;
       case 'refine':
-        await refineCommand(args[1]);
+        await refineCommand(requireFileArg(args[1]));
         break;
       case 'batch':
         await batchCommand(args[1] || './src');

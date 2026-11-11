@@ -32,6 +32,8 @@ export interface ScrubbedItem {
   type: SecretType;
   pattern: string;
   location: number; // character offset in original text
+  length?: number; // length of the matched value in the original text
+  confidence?: number; // detection confidence (0-1) of the matching pattern
   replacement: string;
 }
 

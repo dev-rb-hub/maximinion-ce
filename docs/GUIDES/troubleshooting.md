@@ -36,10 +36,9 @@ netstat -ano | findstr :3000  # Windows
 # Kill process
 kill -9 <PID>  # macOS/Linux
 taskkill /PID <PID> /F  # Windows
-
-# Or use different port
-npx @maximinion/proxy-transport --port 3001
 ```
+
+Note: MaxiMinion CE packages do not currently open network ports themselves.
 
 ---
 
@@ -53,12 +52,12 @@ npx @maximinion/proxy-transport --port 3001
 
 **Solution:**
 ```bash
-# Use conservative mode
-npx @maximinion/refiner --input ./src --mode conservative
-
-# Or disable specific patterns
-npx @maximinion/refiner --input ./src --disable-pattern "COMMENT_BLOCK"
+# See exactly what was redacted (type and position of each match)
+npx @maximinion/refiner sanitize src/app.ts
 ```
+
+Built-in patterns cannot be disabled or tuned yet. If a pattern produces false
+positives, please report it via GitHub Issues with a minimal sample.
 
 ### Issue: Entropy Score Seems Wrong
 
@@ -68,12 +67,14 @@ npx @maximinion/refiner --input ./src --disable-pattern "COMMENT_BLOCK"
 
 **Solution:**
 ```bash
-# Check with different window size
-npx @maximinion/refiner --input ./src --entropy-window 50
+# View per-line entropy scores
+npx @maximinion/refiner entropy src/app.ts
 
-# View detailed analysis
-npx @maximinion/refiner --input ./src --verbose
+# View per-block scores and token counts from the full pipeline
+npx @maximinion/refiner refine src/app.ts
 ```
+
+The entropy calculation is not configurable yet (there is no window-size setting).
 
 ### Issue: Semantic Folding Fails
 
@@ -88,9 +89,13 @@ ollama serve
 
 # In another terminal, verify connection
 ollama list
+```
 
-# Retry refiner with fallback
-npx @maximinion/refiner --input ./src --fallback-on-error
+Semantic folding is only used programmatically (the CLI always disables it).
+If Ollama is unavailable, disable folding in your code:
+
+```typescript
+const refiner = new Refiner({ enableSemanticFolding: false });
 ```
 
 ### Issue: Performance Slow (Large Codebase)
@@ -101,15 +106,15 @@ npx @maximinion/refiner --input ./src --fallback-on-error
 
 **Solution:**
 ```bash
-# Use streaming mode
-npx @maximinion/refiner --input ./src --stream
+# Refine individual files instead of a whole directory
+npx @maximinion/refiner refine src/app.ts > refined.txt
 
-# Or exclude large files
-npx @maximinion/refiner --input ./src --ignore "*.bundle.js,dist/**"
-
-# Process in parallel
-npx @maximinion/refiner --input ./src --parallel 4
+# batch is non-recursive (.ts/.js files directly in the directory),
+# so point it at a smaller directory that excludes bundles and dist/
+npx @maximinion/refiner batch ./src/core > refined.txt
 ```
+
+Streaming, ignore globs, and parallel processing are not available yet.
 
 ---
 
@@ -121,16 +126,13 @@ npx @maximinion/refiner --input ./src --parallel 4
 
 **Cause:** Language parser doesn't support your language
 
-**Solution:**
-```bash
-# Check supported languages
-npx @maximinion/librarian --list-languages
+**Solution:** The Librarian (programmatic API only, no CLI) currently analyzes
+`.ts`, `.tsx`, `.js`, and `.jsx` files, skipping `node_modules` and dot-directories.
+Other languages are not supported yet and cannot be added via configuration.
 
-# Add language support
-npx @maximinion/librarian --add-language python --parser ast
-
-# Or use generic parser
-npx @maximinion/librarian --input ./src --force-generic-parser
+```typescript
+const analysis = await new Librarian().analyze('./src');
+console.log(analysis.graph.nodes.length, analysis.graph.edges.length);
 ```
 
 ### Issue: PageRank Scores All Equal
@@ -140,15 +142,14 @@ npx @maximinion/librarian --input ./src --force-generic-parser
 **Cause:** Convergence threshold too high or insufficient iterations
 
 **Solution:**
-```bash
-# Increase iterations
-npx @maximinion/librarian --input ./src --pagerank-iterations 100
+```typescript
+// Increase iterations (default: 20)
+const librarian = new Librarian({ pageRankIterations: 100 });
+const analysis = await librarian.analyze('./src');
 
-# Lower convergence threshold
-npx @maximinion/librarian --input ./src --convergence-threshold 0.001
-
-# Check connectivity
-npx @maximinion/librarian --input ./src --debug-graph
+// Check connectivity
+console.log(librarian.getSummary(analysis));
+console.log(analysis.graph.edges.length); // 0 edges => all scores equal
 ```
 
 ### Issue: Performance Timeout
@@ -158,16 +159,15 @@ npx @maximinion/librarian --input ./src --debug-graph
 **Cause:** Very large dependency graph
 
 **Solution:**
-```bash
-# Increase timeout
-npx @maximinion/librarian --input ./src --timeout 120
+```typescript
+// Run on a smaller subset first
+const analysis = await new Librarian().analyze('./src/core');
 
-# Or sample graph
-npx @maximinion/librarian --input ./src --max-files 1000
-
-# Run on smaller subset first
-npx @maximinion/librarian --input ./src/core --output test.json
+// Optionally skip the more expensive passes
+const fast = new Librarian({ enableClusterDetection: false, enableCriticalPathAnalysis: false });
 ```
+
+Timeout and file-sampling settings are not available yet.
 
 ---
 
@@ -179,13 +179,12 @@ npx @maximinion/librarian --input ./src/core --output test.json
 
 **Cause:** Unsupported export format
 
-**Solution:**
-```bash
-# List supported formats
-npx @maximinion/manifest-generator --list-formats
+**Solution:** The Manifest Generator (programmatic API only, no CLI) supports
+`json`, `markdown`, `yaml`, and `html`:
 
-# Use supported format
-npx @maximinion/manifest-generator --format markdown  # or json, yaml, html
+```typescript
+const { manifest, nodeMap } = await generator.generate(nodes, references);
+const output = generator.export(manifest, nodeMap, 'markdown'); // or 'json', 'yaml', 'html'
 ```
 
 ### Issue: Cross-References Broken
@@ -195,16 +194,16 @@ npx @maximinion/manifest-generator --format markdown  # or json, yaml, html
 **Cause:** Hierarchy depth too deep or name conflicts
 
 **Solution:**
-```bash
-# Reduce hierarchy depth
-npx @maximinion/manifest-generator --input ./src --max-depth 8
+```typescript
+// Reduce hierarchy depth
+const generator = new ManifestGenerator({ maxHierarchyDepth: 8 });
 
-# Use unique naming
-npx @maximinion/manifest-generator --input ./src --uniquify-names
-
-# Debug hierarchy
-npx @maximinion/manifest-generator --input ./src --debug-hierarchy
+// Inspect generation warnings/errors and stats
+const result = await generator.generate(nodes, references);
+console.log(result.warnings, result.errors, generator.getStats(result.manifest));
 ```
+
+Ensure each `ManifestNode.id` you pass in is unique; there is no automatic renaming.
 
 ### Issue: Output File Very Large
 
@@ -213,16 +212,12 @@ npx @maximinion/manifest-generator --input ./src --debug-hierarchy
 **Cause:** Too many cross-references or full code inclusion
 
 **Solution:**
-```bash
-# Skip code snippets
-npx @maximinion/manifest-generator --input ./src --exclude-code
+```typescript
+// Skip source code and docstrings (includeSourceCode is false by default)
+const generator = new ManifestGenerator({ includeSourceCode: false, includeDocstrings: false });
 
-# Summarize only
-npx @maximinion/manifest-generator --input ./src --summary-only
-
-# Compress with Phase 1
-npx @maximinion/refiner --input ./src | \
-npx @maximinion/manifest-generator --compress
+// Or export only the most important nodes
+const top = generator.getTopNodes(result.manifest, result.nodeMap, 50);
 ```
 
 ---
@@ -233,22 +228,17 @@ npx @maximinion/manifest-generator --compress
 
 **Symptoms:** "Connection refused" in VS Code
 
-**Cause:** Proxy server not running or wrong port
+**Cause:** The Proxy Transport has no CLI and does not currently run a network
+server, and the VS Code extension does not connect to it (live context
+injection is not available yet).
 
-**Solution:**
-```bash
-# Start proxy on default port
-npx @maximinion/proxy-transport
+**Solution:** Use the Proxy Transport in-process from TypeScript and check its health:
+```typescript
+import { ProxyTransport } from '@maximinion/proxy-transport';
 
-# Verify it's running
-curl http://localhost:3000/health
-
-# Check firewall
-# Windows: netsh advfirewall firewall add rule name="MaxiMinion" \
-#   dir=in action=allow program="node.exe" localport=3000 protocol=tcp
-
-# Update VS Code settings
-# Settings > Extensions > MaxiMinion > API Endpoint: http://localhost:3000
+const proxy = new ProxyTransport();
+await proxy.initialize(manifest, nodeMap);
+console.log(proxy.getHealth());
 ```
 
 ### Issue: High Latency in IDE
@@ -258,19 +248,12 @@ curl http://localhost:3000/health
 **Cause:** Large manifests or slow network
 
 **Solution:**
-```bash
-# Check cache hit rate
-# In proxy logs: "Cache hit rate: 45%"
+```typescript
+// Check cache hit rate
+console.log(proxy.getCacheStats()); // { size, entries, hitRate }
 
-# Increase cache size
-export CACHE_MAX_SIZE=1000  # MB
-npx @maximinion/proxy-transport
-
-# Use faster cache eviction
-npx @maximinion/proxy-transport --cache-policy lru
-
-# Pre-load manifests
-npx @maximinion/proxy-transport --preload ./manifest.md
+// Increase cache size (bytes; default 200MB) and use LRU eviction (default)
+const proxy = new ProxyTransport({ cacheMaxSize: 1000 * 1024 * 1024, cacheEvictionPolicy: 'LRU' });
 ```
 
 ### Issue: WebSocket Connection Drops
@@ -280,16 +263,9 @@ npx @maximinion/proxy-transport --preload ./manifest.md
 **Cause:** Idle timeout or network issues
 
 **Solution:**
-```bash
-# Increase idle timeout
-export WEBSOCKET_IDLE_TIMEOUT=120000  # 2 minutes
-npx @maximinion/proxy-transport
-
-# Enable reconnection
-# VS Code setting: MaxiMinion > Auto Reconnect: enabled
-
-# Check network
-ping localhost  # Should work instantly
+```typescript
+// Increase session idle timeout (milliseconds; default 1 hour)
+const proxy = new ProxyTransport({ sessionTimeout: 2 * 60 * 60 * 1000 });
 ```
 
 ### Issue: Memory Usage Growing
@@ -299,20 +275,15 @@ ping localhost  # Should work instantly
 **Cause:** Manifest leaks or unclosed sessions
 
 **Solution:**
-```bash
-# Check running sessions
-curl http://localhost:3000/sessions
+```typescript
+// Check running sessions
+console.log(proxy.getSessionStats()); // { active, peak, totalCreated }
 
-# Clear old sessions
-curl -X POST http://localhost:3000/sessions/cleanup
+// Limit concurrent sessions (default: 100)
+proxy.configure({ maxConcurrentSessions: 50 });
 
-# Restart proxy
-pkill -f proxy-transport
-npx @maximinion/proxy-transport
-
-# Limit concurrent sessions
-export MAX_CONCURRENT_SESSIONS=100
-npx @maximinion/proxy-transport
+// Release resources when done
+proxy.shutdown();
 ```
 
 ---
@@ -406,20 +377,12 @@ npm test
 ### CLI Smoke Tests
 
 ```bash
-# Phase 1
-echo "const secret = 'sk-abc123';" | npx @maximinion/refiner
-
-# Phase 2
-npx @maximinion/librarian --input ./packages/refiner/src
-
-# Phase 3
-npx @maximinion/manifest-generator --input ./packages/refiner/src
-
-# Phase 4
-npx @maximinion/proxy-transport &
-curl http://localhost:3000/health
-pkill -f proxy-transport
+# Phase 1 (the only package with a CLI)
+npx @maximinion/refiner demo
+npx @maximinion/refiner sanitize packages/refiner/src/cli.ts
 ```
+
+Phases 2–4 have no CLI; they are covered by `npm test` above.
 
 ---
 
