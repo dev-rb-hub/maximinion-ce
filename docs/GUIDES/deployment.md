@@ -402,7 +402,7 @@ failover:
 1. Choose your deployment option
 2. Review [Security Guide](security.md)
 3. See [Troubleshooting Guide](troubleshooting.md)
-4. Contact sales@maximinion.ai for help
+4. Contact support@maximinion.ai for help
 
 ---
 

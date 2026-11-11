@@ -178,7 +178,7 @@ npx @maximinion/proxy-transport --port 3000 --manifest ./MANIFEST.md
 **By Audience:**
 - 👨‍💻 Individual Developer? Start with [Quick Start](#quick-start) above, then [docs/GUIDES/local-setup.md](docs/GUIDES/local-setup.md)
 - 🤝 Team Lead? See [ARCHITECTURE.md](ARCHITECTURE.md)
-- 🏢 Enterprise? See the [Pricing & Licensing](#-pricing--licensing) section below, or contact pricing@maximinion.ai
+- 🏢 Enterprise? See the [Pricing & Licensing](#-pricing--licensing) section below, or contact support@maximinion.ai
 - 🔬 Researcher? See [ARCHITECTURE.md](ARCHITECTURE.md) - includes algorithm citations
 - 🛠️ Contributor? See [CONTRIBUTORS.md](CONTRIBUTORS.md) and [docs/index.md](docs/index.md)
 
@@ -335,7 +335,7 @@ A: ~30 minutes for basic usage, ~2 hours for full system understanding. See [doc
 A: See [CONTRIBUTORS.md](CONTRIBUTORS.md#getting-started). Good first issues available!
 
 **Q: What's the licensing for proprietary projects?**  
-A: Community Edition (MIT) is fine for any use. Phase 5-6 (Enterprise) features are licensed separately — contact pricing@maximinion.ai for terms.
+A: Community Edition (MIT) is fine for any use. Phase 5-6 (Enterprise) features are licensed separately — contact support@maximinion.ai for terms.
 
 ---
 
@@ -343,7 +343,7 @@ A: Community Edition (MIT) is fine for any use. Phase 5-6 (Enterprise) features 
 
 - 💬 **Community:** [GitHub Discussions](https://github.com/dev-rb-hub/maximinion-ce/discussions)
 - 🐛 **Bug Reports:** [GitHub Issues](https://github.com/dev-rb-hub/maximinion-ce/issues)
-- 📧 **Professional Support:** pricing@maximinion.ai
+- 📧 **Professional Support:** support@maximinion.ai
 - 🎯 **Enterprise Support:** [Contact Sales](https://maximinion.ai/contact)
 
 ---
@@ -351,7 +351,7 @@ A: Community Edition (MIT) is fine for any use. Phase 5-6 (Enterprise) features 
 ## 📜 License
 
 - **Phases 1-4 (Community Edition):** MIT License (this repository)
-- **Phases 5-6 (Enterprise Features):** Commercial License + Subscription, maintained in a separate private repository — contact pricing@maximinion.ai for terms
+- **Phases 5-6 (Enterprise Features):** Commercial License + Subscription, maintained in a separate private repository — contact support@maximinion.ai for terms
 
 ---
 
