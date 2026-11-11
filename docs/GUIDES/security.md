@@ -188,7 +188,7 @@ curl -X DELETE https://api.maximinion.ai/users/{user_id} \
 
 ### Responsible Disclosure
 
-1. Email: security@maximinion.ai
+1. Email: support@maximinion.ai
 2. Include: detailed reproduction steps
 3. Allow: 90 days for patch before disclosure
 
@@ -293,7 +293,7 @@ npm run detect-secrets
 
 ### Penetration Testing
 
-Available for Enterprise customers. Contact: penetration@maximinion.ai
+Available for Enterprise customers. Contact: support@maximinion.ai
 
 ---
 
@@ -341,4 +341,4 @@ Available for Enterprise customers. Contact: penetration@maximinion.ai
 
 ---
 
-**Security Questions?** Email: security@maximinion.ai
+**Security Questions?** Email: support@maximinion.ai

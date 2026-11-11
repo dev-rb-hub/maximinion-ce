@@ -14,7 +14,7 @@
 Instead, report privately using one of:
 
 1. **GitHub Security Advisories** (preferred): open a [private advisory](https://github.com/dev-rb-hub/maximinion-ce/security/advisories/new) for this repository.
-2. **Email:** security@maximinion.ai — include a detailed reproduction case and the affected version/commit.
+2. **Email:** support@maximinion.ai — include a detailed reproduction case and the affected version/commit.
 
 We aim to acknowledge reports within 5 business days and, per responsible-disclosure norms, ask that you allow up to 90 days for a fix before any public disclosure.
 
