@@ -1,6 +1,17 @@
 # MaxiMinion for VS Code
 
-Share code with AI assistants safely and efficiently. MaxiMinion redacts likely secrets, compacts whitespace, and shows estimated token counts before you paste code into an LLM chat. Everything runs locally: the source document is never modified unless you apply a quick fix, and file contents are never sent to a remote service (semantic folding, if enabled, calls a **local** Ollama instance only).
+**MaxiMinion.AI** is a local-first context optimizer for AI-assisted coding.
+
+Before you paste code into Copilot Chat, ChatGPT, Claude, or any LLM, MaxiMinion:
+
+- **Redacts likely secrets**: API keys, cloud credentials, tokens, private keys, and connection strings become `[REDACTED_…]`.
+- **Shows token counts**: a status bar counter and before/after estimates warn you when you go over your budget.
+- **Copies clean, compact context**: selections, files, or Explorer multi-selections become labelled Markdown blocks with wasted whitespace removed.
+- **Warns you while you edit**: likely secrets are flagged in the Problems panel with a one-click redact fix.
+
+Everything runs on your machine. Your source files are only changed if you apply a quick fix. Optional summarization uses your own local Ollama model; your code is never sent to MaxiMinion servers.
+
+*Coming in 0.4.0: dependency-graph ranking that picks the most important files in your workspace to fit your token budget.*
 
 New here? Run **MaxiMinion: Get Started & Help** from the Command Palette for a short walkthrough.
 
@@ -88,9 +99,17 @@ All commands are in the Command Palette under **MaxiMinion:**.
 - MaxiMinion works in Restricted Mode (untrusted folders). Semantic folding can only be enabled from user settings until the workspace is trusted.
 - The Refiner preview contains only the refined text (no report wrapper), so it can be copied straight into an LLM prompt with minimal token overhead. Full run details are in the **MaxiMinion** output channel.
 
-## Install from source
+## Install
 
-The extension is not yet published to the Marketplace. From the repository root:
+Install **MaxiMinion** from the Extensions view (search "MaxiMinion"), or run:
+
+```bash
+code --install-extension maximinion.maximinion
+```
+
+### Build from source
+
+From the root of the [repository](https://github.com/dev-rb-hub/maximinion-ce):
 
 ```bash
 npm ci

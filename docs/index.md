@@ -206,8 +206,8 @@ flowchart LR
 ### Use Case 4: "I want to integrate context into my IDE"
 1. Start: [README.md](../README.md) - Overview
 2. Learn: [PHASE_4.md](PHASE_4.md) - Proxy transport foundations
-3. Try: [VS Code extension](../packages/vscode-extension/README.md) - Build and install a local VSIX for Copy for AI, token estimates, and inline secret warnings
-4. Note: Marketplace publishing and live context injection are not available yet
+3. Try: [VS Code extension](https://marketplace.visualstudio.com/items?itemName=maximinion.maximinion) - Install from the Marketplace for Copy for AI, token estimates, and inline secret warnings ([details](../packages/vscode-extension/README.md))
+4. Note: live context injection into AI tools is not available yet (planned: [#33](https://github.com/dev-rb-hub/maximinion-ce/issues/33))
 5. Advanced: [ARCHITECTURE.md](../ARCHITECTURE.md#phase-4-proxy-transport) - Planned integration architecture
 
 ### Use Case 5: "I want to deploy MaxiMinion for my team"
@@ -364,7 +364,7 @@ packages/                        # Source code (5 packages)
 | Contribute code | [CONTRIBUTORS.md](../CONTRIBUTORS.md) |
 | View releases | [GitHub Releases](https://github.com/dev-rb-hub/maximinion-ce/releases) |
 | npm package | [@maximinion/refiner](https://www.npmjs.com/package/@maximinion/refiner) |
-| VS Code extension | Marketplace publication pending; [build and install a local VSIX](../packages/vscode-extension/README.md) |
+| VS Code extension | [Published on the Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=maximinion.maximinion) ([details](../packages/vscode-extension/README.md)) |
 
 ---
 
