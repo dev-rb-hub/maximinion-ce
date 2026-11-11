@@ -1,7 +1,7 @@
 {
   "name": "maximinion",
   "displayName": "MaxiMinion",
-  "description": "Local-first secret redaction and token counts for sharing code with AI assistants. Sanitize, compact, and copy files for LLM chats without changing your source.",
+  "description": "Local-first context guard for AI coding: redact secrets, see token counts, and copy clean, compact code into any AI chat.",
   "version": "0.3.1",
   "publisher": "maximinion",
   "private": true,

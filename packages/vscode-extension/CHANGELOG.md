@@ -5,6 +5,7 @@ All notable changes to the MaxiMinion VS Code extension are documented here.
 ## 0.3.1
 
 - The README (shown as the Marketplace listing) now explains how to install from the Marketplace instead of saying the extension is unpublished.
+- New Marketplace description and listing introduction.
 - Added this changelog.
 
 ## 0.3.0
