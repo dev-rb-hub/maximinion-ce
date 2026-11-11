@@ -22,6 +22,14 @@
   "categories": ["AI", "Linters", "Other"],
   "keywords": ["ai", "llm", "copilot", "chatgpt", "prompt", "context", "tokens", "secrets", "redact", "privacy"],
   "activationEvents": ["onStartupFinished"],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": "limited",
+      "description": "Secret warnings, Copy for AI, and sanitization work in Restricted Mode. Semantic folding cannot be enabled by workspace settings until the workspace is trusted.",
+      "restrictedConfigurations": ["maximinion.semanticFolding.enabled"]
+    },
+    "virtualWorkspaces": true
+  },
   "main": "./dist/extension.js",
   "contributes": {
     "commands": [
