@@ -1,17 +1,27 @@
 name: VS Code Extension Release
 
+# Two separate runs, so the exact VSIX that was tested is the one published:
+#   1. action=package: build, attest and attach the VSIX to a GitHub prerelease.
+#      Download it from the prerelease and test it.
+#   2. action=publish: no rebuild. Downloads that prerelease's VSIX, verifies its
+#      provenance (this workflow, main, the tagged commit) and version, then
+#      publishes it after vscode-marketplace environment approval.
+
 on:
   workflow_dispatch:
     inputs:
       version:
-        description: Semantic version to package (for example, 0.1.1)
+        description: Semantic version (for example, 0.1.1)
         required: true
         type: string
-      publish:
-        description: Publish this version to the Visual Studio Marketplace
+      action:
+        description: package builds a VSIX for testing; publish ships that tested VSIX unchanged
         required: true
-        default: false
-        type: boolean
+        default: package
+        type: choice
+        options:
+          - package
+          - publish
 
 permissions:
   contents: read
@@ -23,7 +33,7 @@ concurrency:
 jobs:
   package:
     # workflow_dispatch requires write access; reject non-CODEOWNER and non-main runs before any steps execute.
-    if: ${{ github.actor == 'dev-rb-hub' && github.triggering_actor == 'dev-rb-hub' && github.ref == 'refs/heads/main' }}
+    if: ${{ inputs.action == 'package' && github.actor == 'dev-rb-hub' && github.triggering_actor == 'dev-rb-hub' && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -81,21 +91,22 @@ jobs:
           fi
           git tag "$tag"
           git push origin "$tag"
-          notes=$(printf '📦 **Packaged** — pending Marketplace publish approval.\n\n- Extension: `maximinion.maximinion@%s`\n- Provenance: verify the attached VSIX with `gh attestation verify <file> -R %s`\n- Workflow run: %s/%s/actions/runs/%s' \
-            "$EXTENSION_VERSION" "$GITHUB_REPOSITORY" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID")
+          sha=$(sha256sum "packages/vscode-extension/maximinion-${EXTENSION_VERSION}.vsix" | cut -d' ' -f1)
+          notes=$(printf '📦 **Packaged** — test this VSIX, then publish it unchanged by running this workflow with action `publish`.\n\n- Extension: `maximinion.maximinion@%s`\n- Commit: `%s`\n- SHA-256: `%s`\n- Provenance: verify the attached VSIX with `gh attestation verify <file> -R %s`\n- Workflow run: %s/%s/actions/runs/%s' \
+            "$EXTENSION_VERSION" "$GITHUB_SHA" "$sha" "$GITHUB_REPOSITORY" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID")
           gh release create "$tag" packages/vscode-extension/*.vsix \
             --title "MaxiMinion VS Code Extension v${EXTENSION_VERSION}" \
             --notes "$notes" \
             --prerelease
 
   publish:
-    needs: package
-    if: ${{ inputs.publish && github.actor == 'dev-rb-hub' && github.triggering_actor == 'dev-rb-hub' && github.ref == 'refs/heads/main' }}
+    if: ${{ inputs.action == 'publish' && github.actor == 'dev-rb-hub' && github.triggering_actor == 'dev-rb-hub' && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     environment: vscode-marketplace
     permissions:
       contents: write
       deployments: write
+      attestations: read
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
@@ -105,14 +116,49 @@ jobs:
           node-version: 22.x
           cache: npm
 
+      # Installs only the pinned @vscode/vsce CLI; the extension is not rebuilt.
       - run: npm ci
 
-      - uses: actions/download-artifact@v8
-        with:
-          name: maximinion-vsix
-          path: packages/vscode-extension/release-artifacts
+      - name: Download and verify the tested VSIX
+        working-directory: packages/vscode-extension
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EXTENSION_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$EXTENSION_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Version must use major.minor.patch format"
+            exit 1
+          fi
+          tag="vscode-extension-v${EXTENSION_VERSION}"
+          file="maximinion-${EXTENSION_VERSION}.vsix"
 
-      - name: Publish approved VSIX
+          if [ "$(gh release view "$tag" --json isPrerelease --jq .isPrerelease)" != "true" ]; then
+            echo "::error::$tag is not a packaged prerelease (missing, or already published). Run with action 'package' first."
+            exit 1
+          fi
+          commit=$(gh api "repos/$GITHUB_REPOSITORY/commits/$tag" --jq .sha)
+
+          mkdir -p release-artifacts
+          gh release download "$tag" --pattern "$file" --dir release-artifacts
+
+          # The attestation binds the file's digest to the run that built it: this workflow,
+          # on main, at the tagged commit, on a GitHub-hosted runner.
+          gh attestation verify "release-artifacts/$file" \
+            --repo "$GITHUB_REPOSITORY" \
+            --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/vscode-extension-release.yml" \
+            --source-ref refs/heads/main \
+            --source-digest "$commit" \
+            --deny-self-hosted-runners
+
+          packaged=$(unzip -p "release-artifacts/$file" extension/package.json | jq -r .version)
+          if [ "$packaged" != "$EXTENSION_VERSION" ]; then
+            echo "::error::$file contains version $packaged, expected $EXTENSION_VERSION"
+            exit 1
+          fi
+          echo "Publishing $file from $commit, SHA-256 $(sha256sum "release-artifacts/$file" | cut -d' ' -f1)"
+
+      - name: Publish tested VSIX
         working-directory: packages/vscode-extension
         env:
           EXTENSION_VERSION: ${{ inputs.version }}
@@ -127,10 +173,14 @@ jobs:
       # Flips the prerelease created by the package job to a full release,
       # so the GitHub Release status always reflects Marketplace truth.
       - name: Promote GitHub Release
+        working-directory: packages/vscode-extension
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           EXTENSION_VERSION: ${{ inputs.version }}
         run: |
           tag="vscode-extension-v${EXTENSION_VERSION}"
-          notes=$(printf '✅ **Published** to the Visual Studio Marketplace.\n\n- https://marketplace.visualstudio.com/items?itemName=maximinion.maximinion\n- Version: %s' "$EXTENSION_VERSION")
+          commit=$(gh api "repos/$GITHUB_REPOSITORY/commits/$tag" --jq .sha)
+          sha=$(sha256sum "release-artifacts/maximinion-${EXTENSION_VERSION}.vsix" | cut -d' ' -f1)
+          notes=$(printf '✅ **Published** to the Visual Studio Marketplace: the attached VSIX, unchanged from the tested prerelease.\n\n- https://marketplace.visualstudio.com/items?itemName=maximinion.maximinion\n- Version: %s\n- Commit: `%s`\n- SHA-256: `%s`\n- Publish run: %s/%s/actions/runs/%s' \
+            "$EXTENSION_VERSION" "$commit" "$sha" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID")
           gh release edit "$tag" --prerelease=false --notes "$notes"
