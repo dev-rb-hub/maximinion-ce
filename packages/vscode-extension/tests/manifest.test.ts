@@ -52,7 +52,7 @@ describe('extension manifest', () => {
     const properties = Object.assign({}, ...contributes.configuration.map((c: { properties: object }) => c.properties));
     for (const key of USER_ONLY_SETTINGS) {
       expect({ key, scope: properties[`maximinion.${key}`]?.scope }).toEqual({ key, scope: 'application' });
-      expect(source).not.toMatch(new RegExp(`\\.get(<\\w+>)?\\('${key.replace(/\./g, '\\.')}'`));
+      expect(source).not.toMatch(new RegExp(`\\.get(<\\w+>)?\\('${key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}'`));
       expect(source).toContain(`'${key}'`);
     }
   });
