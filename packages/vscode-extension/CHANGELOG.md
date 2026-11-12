@@ -2,7 +2,7 @@
 
 All notable changes to the MaxiMinion VS Code extension are documented here.
 
-## Unreleased
+## 0.4.0
 
 ### Added
 

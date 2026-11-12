@@ -11,7 +11,7 @@ Before you paste code into Copilot Chat, ChatGPT, Claude, or any LLM, MaxiMinion
 
 Everything runs on your machine. Your source files are only changed if you apply a quick fix. Optional summarization uses your own local Ollama model; your code is never sent to MaxiMinion servers.
 
-*Coming in 0.4.0: dependency-graph ranking that picks the most important files in your workspace to fit your token budget.*
+*Coming in 0.5.0: dependency-graph ranking that picks the most important files in your workspace to fit your token budget.*
 
 New here? Run **MaxiMinion: Get Started & Help** from the Command Palette for a short walkthrough.
 
