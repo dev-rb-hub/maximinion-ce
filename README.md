@@ -115,7 +115,7 @@ code --install-extension packages/vscode-extension/maximinion-<version>.vsix
 
 Replace `<version>` with the version in [packages/vscode-extension/package.json](packages/vscode-extension/package.json).
 
-To release, run the **VS Code Extension Release** GitHub Actions workflow. It packages a versioned VSIX and creates a GitHub prerelease. Publishing requires selecting the publish option, the `VSCE_PAT` secret on the `vscode-marketplace` environment, and approval of that environment's deployment. Azure DevOps global PATs are scheduled for retirement on December 1, 2026, so migrate the publishing credential before then.
+To release, run the **VS Code Extension Release** GitHub Actions workflow twice. First run it with action `package`: it builds a versioned VSIX, attests its provenance, and attaches it to a GitHub prerelease, so you can test that exact file. Then run it with action `publish`: it does not rebuild. It downloads the tested VSIX from the prerelease, verifies that this workflow built it on `main` at the tagged commit, and publishes it unchanged. Publishing requires the `VSCE_PAT` secret on the `vscode-marketplace` environment and approval of that environment's deployment. Azure DevOps global PATs are scheduled for retirement on December 1, 2026, so migrate the publishing credential before then.
 
 #### Option 2: Refiner CLI
 Only `@maximinion/refiner` ships a command-line tool (`refiner`):
