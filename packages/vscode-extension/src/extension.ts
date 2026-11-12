@@ -4,9 +4,10 @@ import { ActivityLog } from './guard/activity-log';
 import { copyToClipboard, createRefiner, OLLAMA_ENDPOINT } from './guard/egress';
 import { describeHiddenUnicode, findHiddenUnicode } from './guard/hidden-unicode';
 import { sensitiveReason } from './guard/sensitive-paths';
+import { getSecurityPosture, PostureInputs, PostureState, renderPostureMarkdown } from './guard/posture';
 import { buildAiPayload, estimateTokens, formatTokens, PayloadSource } from './payload';
 import { findSecretRanges, PII_TYPES } from './secret-ranges';
-import { userSetting } from './settings';
+import { findIgnoredOverrides, userSetting } from './settings';
 
 export const CE_NOTICE =
   'MaxiMinion.AI Community Edition is provided completely free of charge for evaluation and individual use. ' +
@@ -834,6 +835,55 @@ function getNonce(): string {
   return nonce;
 }
 
+const SECURITY_STATUS_SCHEME = 'maximinion-security';
+const OVERRIDE_NOTICE_KEY = 'maximinion.ignoredOverridesNotified';
+
+function currentPostureInputs(): PostureInputs {
+  const config = getConfig();
+  return {
+    scrubbing: userSetting(config, 'secretScrubbing.enabled', true),
+    diagnostics: userSetting(config, 'secretDiagnostics.enabled', true),
+    minConfidence: userSetting(config, 'secretDiagnostics.minConfidence', 0.75),
+    folding: config.get<boolean>('semanticFolding.enabled', false),
+    trusted: vscode.workspace.isTrusted !== false,
+    ignoredOverrides: findIgnoredOverrides(config),
+  };
+}
+
+/** Opens a read-only Markdown report of the live security posture. */
+async function showSecurityStatus(): Promise<void> {
+  // A fresh query string makes VS Code render the current state instead of a cached document.
+  const uri = vscode.Uri.parse(`${SECURITY_STATUS_SCHEME}:Security%20Status.md?${Date.now()}`);
+  try {
+    await vscode.commands.executeCommand('markdown.showPreview', uri);
+  } catch {
+    await vscode.window.showTextDocument(await vscode.workspace.openTextDocument(uri), { preview: true });
+  }
+}
+
+/**
+ * Tells the user, once per workspace and set of values, when the workspace's settings try to lower
+ * protection. The values are already ignored; this makes that visible.
+ */
+function noticeIgnoredOverrides(context: vscode.ExtensionContext): void {
+  const weakening = findIgnoredOverrides(getConfig()).filter((override) => override.weakens);
+  const settings = weakening.map((override) => `maximinion.${override.key} = ${JSON.stringify(override.attempted)}`);
+  const signature = settings.join(';');
+  if (!signature || context.workspaceState.get<string>(OVERRIDE_NOTICE_KEY) === signature) return;
+
+  void context.workspaceState.update(OVERRIDE_NOTICE_KEY, signature);
+  activityLog.record({ kind: 'override-ignored', settings });
+  void warn(
+    `This workspace's settings try to lower secret protection (${settings.join(', ')}). ` +
+      'MaxiMinion ignores them and uses your user settings.',
+    'Show Security Status',
+  ).then((choice) => {
+    if (choice === 'Show Security Status') void showSecurityStatus();
+  });
+}
+
+const POSTURE_ICON: Record<PostureState, string> = { on: '✓', off: '✕', warn: '!', info: 'i' };
+
 class MaximinionSidebarProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = 'maximinion.sidebar';
 
@@ -846,12 +896,16 @@ class MaximinionSidebarProvider implements vscode.WebviewViewProvider {
         webviewView.webview.html = this.getHtml();
       }
     });
+    const trustListener = vscode.workspace.onDidGrantWorkspaceTrust(() => {
+      webviewView.webview.html = this.getHtml();
+    });
     const rerender = () => {
       webviewView.webview.html = this.getHtml();
     };
     foldingStatusListeners.add(rerender);
     webviewView.onDidDispose(() => {
       configListener.dispose();
+      trustListener.dispose();
       foldingStatusListeners.delete(rerender);
     });
 
@@ -864,6 +918,8 @@ class MaximinionSidebarProvider implements vscode.WebviewViewProvider {
         showHelp: 'maximinion.showHelp',
         showProblems: 'workbench.actions.view.problems',
         testFolding: 'maximinion.testSemanticFolding',
+        securityStatus: 'maximinion.showSecurityStatus',
+        activityLog: 'maximinion.showActivityLog',
       };
       if (message.command === 'openDocs') {
         void vscode.env.openExternal(vscode.Uri.parse(HELP_URL));
@@ -882,6 +938,7 @@ class MaximinionSidebarProvider implements vscode.WebviewViewProvider {
     const tokenBudget = config.get<number>('tokenBudget', 8000);
     const diagnosticsEnabled = userSetting(config, 'secretDiagnostics.enabled', true);
     const onOff = (value: boolean) => (value ? 'on' : 'off');
+    const posture = getSecurityPosture(currentPostureInputs());
     const nonce = getNonce();
 
     return `<!DOCTYPE html>
@@ -903,6 +960,13 @@ class MaximinionSidebarProvider implements vscode.WebviewViewProvider {
   a { color: var(--vscode-textLink-foreground); cursor: pointer; }
   ul { margin: 4px 0; padding-left: 16px; }
   .notice { margin-top: 16px; font-size: 0.8em; opacity: 0.7; }
+  ul.posture { list-style: none; padding-left: 0; }
+  ul.posture li { margin: 2px 0; }
+  ul.posture .icon { display: inline-block; width: 1.2em; text-align: center; font-weight: bold; }
+  ul.posture li.on .icon { color: var(--vscode-testing-iconPassed); }
+  ul.posture li.off .icon { color: var(--vscode-errorForeground); }
+  ul.posture li.warn { color: var(--vscode-editorWarning-foreground); }
+  ul.posture li.info .icon { color: var(--vscode-textLink-foreground); }
 </style>
 </head>
 <body>
@@ -920,6 +984,20 @@ class MaximinionSidebarProvider implements vscode.WebviewViewProvider {
   <h3>Secret warnings</h3>
   <p class="hint">Likely secrets are underlined and listed in the Problems panel as <b>MaxiMinion</b>. Press Ctrl+. on one to redact it.</p>
   <button class="secondary" data-command="showProblems">Show Problems Panel</button>
+
+  <h3>Security</h3>
+  <p class="hint">Live status of MaxiMinion's protections, read from the code that enforces them. Hover a row for details.</p>
+  <ul class="posture">
+    ${posture
+      .map(
+        (row) =>
+          `<li class="${row.state}" title="${escapeHtml(row.status)}"><span class="icon">${POSTURE_ICON[row.state]}</span> ` +
+          `${escapeHtml(row.control)}${row.state === 'off' ? ' (off)' : ''}${row.state === 'warn' ? ': needs attention' : ''}</li>`,
+      )
+      .join('\n    ')}
+  </ul>
+  <button class="secondary" data-command="securityStatus">Show Security Status</button>
+  <button class="secondary" data-command="activityLog">Show Activity Log</button>
 
   <h3>Current settings</h3>
   <ul>
@@ -978,6 +1056,7 @@ export function activate(context: vscode.ExtensionContext): void {
       if (event.affectsConfiguration('maximinion')) {
         statusBar.update();
         diagnostics.refreshAll();
+        noticeIgnoredOverrides(context);
       }
       if (event.affectsConfiguration('maximinion.semanticFolding')) {
         scheduleFoldingEnforcement();
@@ -1014,6 +1093,10 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
     vscode.commands.registerCommand('maximinion.runRefinerOnActiveFile', createRunRefinerOnActiveDocument(outputChannel)),
     vscode.commands.registerCommand('maximinion.showActivityLog', () => activityLog.show()),
+    vscode.workspace.registerTextDocumentContentProvider(SECURITY_STATUS_SCHEME, {
+      provideTextDocumentContent: () => renderPostureMarkdown(getSecurityPosture(currentPostureInputs())),
+    }),
+    vscode.commands.registerCommand('maximinion.showSecurityStatus', showSecurityStatus),
     vscode.commands.registerCommand('maximinion.openSettings', () => {
       void vscode.commands.executeCommand('workbench.action.openSettings', 'maximinion');
     }),
@@ -1024,4 +1107,5 @@ export function activate(context: vscode.ExtensionContext): void {
   statusBar.update();
   void refreshFoldingStatus(false);
   showNoticeOnce(context);
+  noticeIgnoredOverrides(context);
 }

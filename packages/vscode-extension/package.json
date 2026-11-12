@@ -77,6 +77,12 @@
         "title": "Show Activity Log",
         "category": "MaxiMinion",
         "icon": "$(history)"
+      },
+      {
+        "command": "maximinion.showSecurityStatus",
+        "title": "Show Security Status",
+        "category": "MaxiMinion",
+        "icon": "$(shield)"
       }
     ],
     "submenus": [
@@ -114,6 +120,10 @@
         {
           "command": "maximinion.showActivityLog",
           "group": "9_help@2"
+        },
+        {
+          "command": "maximinion.showSecurityStatus",
+          "group": "9_help@3"
         },
         {
           "command": "maximinion.showHelp",
@@ -165,6 +175,11 @@
           "command": "maximinion.showActivityLog",
           "when": "view == maximinion.sidebar",
           "group": "navigation@3"
+        },
+        {
+          "command": "maximinion.showSecurityStatus",
+          "when": "view == maximinion.sidebar",
+          "group": "navigation@4"
         }
       ]
     },

@@ -20,7 +20,8 @@ export type ActivityEvent =
       scrubbing?: boolean;
     }
   | { kind: 'preview'; command: string; source: string; redacted: number; scrubbing: boolean }
-  | { kind: 'declined'; command: string; sources: string[]; reason: string };
+  | { kind: 'declined'; command: string; sources: string[]; reason: string }
+  | { kind: 'override-ignored'; settings: string[] };
 
 const SOURCE_LIMIT = 20;
 
@@ -48,6 +49,8 @@ export function formatActivity(event: ActivityEvent): string {
       return `Opened local preview (${event.command}): ${event.source}, ${event.redacted} redacted, ${scrubbing(event.scrubbing)}`;
     case 'declined':
       return `Not copied (${event.command}): [${listSources(event.sources)}], ${event.reason}`;
+    case 'override-ignored':
+      return `Ignored workspace setting(s) that would lower protection: ${event.settings.join(', ')}`;
   }
 }
 

@@ -86,7 +86,17 @@ Files you pick yourself (the active editor or an Explorer selection) are not blo
 
 ### Layer 5: Activity log
 
-**MaxiMinion: Show Activity Log** opens the *MaxiMinion Activity* log channel. It records each clipboard copy (command, file paths, number of values redacted, whether redaction was on, estimated tokens, hidden Unicode found), each request to the local model, each local preview, and each copy you declined and why. It never records file content. VS Code timestamps each entry and keeps the logs of recent sessions on disk; nothing leaves your machine.
+**MaxiMinion: Show Activity Log** opens the *MaxiMinion Activity* log channel. It records each clipboard copy (command, file paths, number of values redacted, whether redaction was on, estimated tokens, hidden Unicode found), each request to the local model, each local preview, each copy you declined and why, and workspace settings that were ignored because they would have lowered protection. It never records file content. VS Code timestamps each entry and keeps the logs of recent sessions on disk; nothing leaves your machine.
+
+## Showing the posture to users
+
+Following the Kiro Crew posture panel, users can see these controls working instead of taking them on trust:
+
+- The **Security** section of the extension sidebar lists each control with its live state (on, off in your settings, needs attention, or information), with details on hover.
+- **MaxiMinion: Show Security Status** opens a report with each control, its live state, and the code that enforces it.
+- If a workspace's settings try to lower protection, the user is told once per workspace, and the event is logged.
+
+The rule that keeps this honest: **every value shown is read from the constant or function that enforces it** ([posture.ts](../packages/vscode-extension/src/guard/posture.ts)): the pattern count from `SECRET_REGEX_PATTERNS`, the endpoint from `OLLAMA_ENDPOINT`, the credential-file rules from the tables `sensitiveReason()` uses, the scan limits from `SCAN_LIMITS`, and settings through `userSetting()`. Tests check the report against those sources and check that every example rule shown to users matches its rule. The report links to the known gaps below.
 
 ## Future surfaces
 
@@ -95,6 +105,8 @@ These rules apply when the matching features are built:
 - **Copilot Chat / MCP tools (#33).** The model is an untrusted caller. Tools are read-only, validate their inputs against schemas with length limits, return only sanitized context from the Context Pack, and cannot change settings or `.maximinionignore`.
 - **Proxy Transport server (Phase 4).** If a real HTTP or WebSocket server is added, it binds to `127.0.0.1`, requires a per-session token, and checks the `Host` and `Origin` headers to block DNS rebinding and cross-site requests. Today Proxy Transport opens no port.
 - **`.maximinionignore` (#32).** The file can only exclude paths, so honouring it in untrusted workspaces cannot widen what is read.
+- **User-defined secret patterns and extra sensitive paths (#44).** User settings only: a regex supplied by a workspace is attacker-controlled input and could hang the editor.
+- **Commercial editions (#45).** An organisation-pinned governance ceiling, a tamper-evident activity log, and central reporting. None of these are part of Community Edition.
 
 ## Known gaps
 

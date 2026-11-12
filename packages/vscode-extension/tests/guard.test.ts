@@ -39,9 +39,12 @@ const mockVscode = {
 
 jest.mock('vscode', () => mockVscode, { virtual: true });
 
+import { SECRET_REGEX_PATTERNS } from '@maximinion/refiner';
 import { formatActivity } from '../src/guard/activity-log';
+import { OLLAMA_ENDPOINT } from '../src/guard/egress';
 import { findHiddenUnicode } from '../src/guard/hidden-unicode';
-import { sensitiveReason } from '../src/guard/sensitive-paths';
+import { getSecurityPosture, PostureInputs, renderPostureMarkdown } from '../src/guard/posture';
+import { SENSITIVE_EXCEPTIONS, SENSITIVE_RULES, sensitiveReason } from '../src/guard/sensitive-paths';
 import { readForScan, SCAN_LIMITS } from '../src/guard/workspace-reader';
 
 afterAll(() => {
@@ -72,6 +75,67 @@ describe('sensitiveReason', () => {
       expect(sensitiveReason(file)).toBeUndefined();
     },
   );
+
+  test('every example shown to users matches its rule', () => {
+    for (const { reason, examples } of SENSITIVE_RULES) {
+      for (const example of examples) {
+        const file = example.replace('*', 'name').replace(/\/$/, '/file');
+        expect({ example, reason: sensitiveReason(`project/${file}`) }).toEqual({ example, reason });
+      }
+    }
+    for (const exception of SENSITIVE_EXCEPTIONS) expect(sensitiveReason(exception)).toBeUndefined();
+  });
+});
+
+describe('security posture', () => {
+  const inputs: PostureInputs = {
+    scrubbing: true,
+    diagnostics: true,
+    minConfidence: 0.75,
+    folding: false,
+    trusted: true,
+    ignoredOverrides: [],
+  };
+  const row = (rows: ReturnType<typeof getSecurityPosture>, control: string) => rows.find((r) => r.control === control)!;
+
+  test('reports values from the code that enforces them', () => {
+    const rows = getSecurityPosture(inputs);
+
+    expect(row(rows, 'Network').status).toContain(OLLAMA_ENDPOINT);
+    expect(row(rows, 'Secret redaction').status).toContain(`${Object.keys(SECRET_REGEX_PATTERNS).length} built-in patterns`);
+    expect(row(rows, 'Credential files').status).toContain(`${SENSITIVE_RULES.length} rules`);
+    expect(row(rows, 'Workspace scans').status).toContain(`${SCAN_LIMITS.maxFileBytes / 1024} KB`);
+    expect(rows.every((r) => r.enforcedBy.length > 0)).toBe(true);
+  });
+
+  test('shows what the user turned off and what a workspace tried to change', () => {
+    const rows = getSecurityPosture({
+      ...inputs,
+      scrubbing: false,
+      trusted: false,
+      ignoredOverrides: [
+        { key: 'secretDiagnostics.enabled', attempted: false, effective: true, weakens: true },
+        { key: 'secretDiagnostics.minConfidence', attempted: 0.5, effective: 0.75, weakens: false },
+      ],
+    });
+
+    expect(row(rows, 'Secret redaction').state).toBe('off');
+    expect(row(rows, 'Protection settings')).toMatchObject({
+      state: 'warn',
+      status: expect.stringContaining('maximinion.secretDiagnostics.enabled = false'),
+    });
+    expect(row(rows, 'Protection settings').status).not.toContain('0.5');
+    expect(row(rows, 'Workspace trust').status).toContain('Restricted Mode');
+  });
+
+  test('renders a Markdown table that escapes pipes', () => {
+    const markdown = renderPostureMarkdown([
+      { layer: 'x', control: 'A | B', state: 'on', status: 'line\nbreak', enforcedBy: 'mod.ts' },
+    ]);
+
+    expect(markdown).toContain('| A \\| B | ✅ On | line break | `mod.ts` |');
+    expect(markdown).toContain('SECURITY_MODEL.md');
+  });
 });
 
 describe('findHiddenUnicode', () => {

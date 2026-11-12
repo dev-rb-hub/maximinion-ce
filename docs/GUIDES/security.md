@@ -58,6 +58,7 @@ const sanitizer = new Sanitizer({
 - **Credential files need confirmation.** Copy for AI asks before copying files such as `.env`, private keys, or Terraform state, and still redacts them if you go ahead.
 - **Hidden Unicode needs confirmation.** Copy for AI asks before copying text with bidirectional controls or invisible characters, which can hide instructions that an AI model still reads.
 - **Check the activity log.** **MaxiMinion: Show Activity Log** lists what was copied or sent, how many values were redacted, and what you declined.
+- **Check the security status.** The sidebar's **Security** section and **MaxiMinion: Show Security Status** show each protection's live state, read from the code that enforces it.
 - **Restricted Mode works.** In untrusted folders, Copy for AI, warnings, and sanitization work, and semantic folding cannot be enabled by the workspace.
 - **Semantic folding is local and optional.** It is off by default and only talks to Ollama on `localhost`. Summaries are lossy; review them.
 

@@ -20,6 +20,7 @@ function makeDocument(text: string, path = 'test.ts', languageId = 'typescript')
 
 const commandHandlers = new Map<string, CommandHandler>();
 const configValues: Record<string, unknown> = {};
+const workspaceStateValues: Record<string, unknown> = {};
 // Values from a workspace's .vscode/settings.json; `get` applies them like a host that ignores setting scopes.
 const workspaceConfigValues: Record<string, unknown> = {};
 const globalStateValues: Record<string, unknown> = {};
@@ -128,6 +129,9 @@ const mockVscode = {
     onDidOpenTextDocument: jest.fn(disposable),
     onDidChangeTextDocument: jest.fn(disposable),
     onDidCloseTextDocument: jest.fn(disposable),
+    onDidGrantWorkspaceTrust: jest.fn(disposable),
+    registerTextDocumentContentProvider: jest.fn(disposable),
+    isTrusted: true,
   },
 };
 
@@ -150,6 +154,8 @@ describe('MaxiMinion VS Code commands', () => {
     for (const key of Object.keys(configValues)) delete configValues[key];
     for (const key of Object.keys(workspaceConfigValues)) delete workspaceConfigValues[key];
     for (const key of Object.keys(globalStateValues)) delete globalStateValues[key];
+    for (const key of Object.keys(workspaceStateValues)) delete workspaceStateValues[key];
+    mockVscode.workspace.isTrusted = true;
     mockVscode.workspace.textDocuments = [];
     mockVscode.window.showInformationMessage.mockResolvedValue(undefined);
     mockVscode.window.showWarningMessage.mockResolvedValue(undefined);
@@ -165,6 +171,13 @@ describe('MaxiMinion VS Code commands', () => {
         get: (key: string) => globalStateValues[key],
         update: jest.fn((key: string, value: unknown) => {
           globalStateValues[key] = value;
+          return Promise.resolve();
+        }),
+      },
+      workspaceState: {
+        get: (key: string) => workspaceStateValues[key],
+        update: jest.fn((key: string, value: unknown) => {
+          workspaceStateValues[key] = value;
           return Promise.resolve();
         }),
       },
@@ -600,6 +613,65 @@ describe('MaxiMinion VS Code commands', () => {
         .find((value) => value.name === 'MaxiMinion Activity');
       expect(mockVscode.window.createOutputChannel).toHaveBeenCalledWith('MaxiMinion Activity', { log: true });
       expect(channel.show).toHaveBeenCalled();
+    });
+
+    test('Show Security Status opens a live report as a Markdown preview', async () => {
+      configValues['secretScrubbing.enabled'] = false;
+      await commandHandlers.get('maximinion.showSecurityStatus')!();
+
+      const [command, uri] = mockVscode.commands.executeCommand.mock.calls.find((call: unknown[]) => call[0] === 'markdown.showPreview')!;
+      expect(command).toBe('markdown.showPreview');
+      expect((uri as { value: string }).value).toMatch(/^maximinion-security:Security%20Status\.md\?\d+$/);
+
+      const [scheme, provider] = (mockVscode.workspace.registerTextDocumentContentProvider.mock.calls as any[])[0];
+      expect(scheme).toBe('maximinion-security');
+      const report = provider.provideTextDocumentContent(uri) as string;
+      expect(report).toContain('# MaxiMinion Security Status');
+      expect(report).toMatch(/\| Secret redaction \| ⛔ Off \| Off in your user settings/);
+      expect(report).toContain('http://localhost:11434');
+    });
+
+    test('tells the user once when workspace settings try to lower protection', () => {
+      workspaceConfigValues['secretScrubbing.enabled'] = false;
+      workspaceConfigValues['secretDiagnostics.minConfidence'] = 0.99;
+      const configCallback = (mockVscode.workspace.onDidChangeConfiguration.mock.calls as any[])[0][0];
+
+      configCallback({ affectsConfiguration: () => true });
+      configCallback({ affectsConfiguration: () => true });
+
+      const notices = (mockVscode.window.showWarningMessage.mock.calls as string[][]).filter((call) =>
+        call[0].includes('try to lower secret protection'),
+      );
+      expect(notices).toHaveLength(1);
+      expect(notices[0][0]).toContain('maximinion.secretScrubbing.enabled = false, maximinion.secretDiagnostics.minConfidence = 0.99');
+      expect(notices[0][1]).toBe('Show Security Status');
+      expect(activityLines()).toEqual([
+        'Ignored workspace setting(s) that would lower protection: maximinion.secretScrubbing.enabled = false, maximinion.secretDiagnostics.minConfidence = 0.99',
+      ]);
+    });
+
+    test('does not warn about workspace settings that only make protection stricter', () => {
+      workspaceConfigValues['secretDiagnostics.minConfidence'] = 0.5;
+      const configCallback = (mockVscode.workspace.onDidChangeConfiguration.mock.calls as any[])[0][0];
+
+      configCallback({ affectsConfiguration: () => true });
+
+      expect(mockVscode.window.showWarningMessage).not.toHaveBeenCalled();
+    });
+
+    test('the sidebar shows the security posture with escaped details', () => {
+      mockVscode.workspace.isTrusted = false;
+      const provider = (mockVscode.window.registerWebviewViewProvider.mock.calls as any[])[0][1];
+      const view = {
+        webview: { options: {}, html: '', onDidReceiveMessage: jest.fn() },
+        onDidDispose: jest.fn(),
+      };
+
+      provider.resolveWebviewView(view);
+
+      expect(view.webview.html).toContain('<h3>Security</h3>');
+      expect(view.webview.html).toContain('title="Restricted Mode: this workspace cannot turn on semantic folding."');
+      expect(view.webview.html).toContain('data-command="securityStatus"');
     });
   });
 

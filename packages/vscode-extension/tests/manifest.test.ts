@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { USER_ONLY_SETTINGS } from '../src/settings';
+import { USER_ONLY_DEFAULTS, USER_ONLY_SETTINGS } from '../src/settings';
 
 const root = path.join(__dirname, '..');
 const manifest = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
@@ -52,6 +52,7 @@ describe('extension manifest', () => {
     const properties = Object.assign({}, ...contributes.configuration.map((c: { properties: object }) => c.properties));
     for (const key of USER_ONLY_SETTINGS) {
       expect({ key, scope: properties[`maximinion.${key}`]?.scope }).toEqual({ key, scope: 'application' });
+      expect({ key, default: USER_ONLY_DEFAULTS[key] }).toEqual({ key, default: properties[`maximinion.${key}`]?.default });
       expect(source).not.toMatch(new RegExp(`\\.get(<\\w+>)?\\('${key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}'`));
       expect(source).toContain(`'${key}'`);
     }
