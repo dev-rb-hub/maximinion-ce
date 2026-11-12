@@ -2,6 +2,12 @@
 
 All notable changes to the MaxiMinion VS Code extension are documented here.
 
+## 0.3.2
+
+### Security
+
+- Secret protection settings (`maximinion.secretScrubbing.enabled`, `maximinion.secretDiagnostics.enabled`, and `maximinion.secretDiagnostics.minConfidence`) can now only be changed in your user settings. Previously, a repository's `.vscode/settings.json` could turn off secret redaction in Copy for AI or hide inline secret warnings. If you changed these settings for a single workspace, set them in your user settings instead.
+
 ## 0.3.1
 
 - The README (shown as the Marketplace listing) now explains how to install from the Marketplace instead of saying the extension is unpublished.

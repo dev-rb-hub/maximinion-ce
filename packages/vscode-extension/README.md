@@ -83,9 +83,9 @@ All commands are in the Command Palette under **MaxiMinion:**.
 | `maximinion.tokenBudget` | `8000` | Estimated token budget for Copy for AI and the status bar. `0` disables budget warnings. |
 | `maximinion.copyForAI.compactWhitespace` | `true` | Remove trailing whitespace (except in Markdown) and collapse repeated blank lines in Copy for AI output. |
 | `maximinion.statusBar.enabled` | `true` | Show the estimated token count in the status bar. |
-| `maximinion.secretDiagnostics.enabled` | `true` | Show inline warnings for likely secrets in open files. |
-| `maximinion.secretDiagnostics.minConfidence` | `0.75` | Minimum pattern confidence (0–1) for inline warnings. Raise it to reduce false positives. |
-| `maximinion.secretScrubbing.enabled` | `true` | Enable secret scrubbing for Copy for AI and the Refiner commands. |
+| `maximinion.secretDiagnostics.enabled` | `true` | Show inline warnings for likely secrets in open files. User settings only. |
+| `maximinion.secretDiagnostics.minConfidence` | `0.75` | Minimum pattern confidence (0–1) for inline warnings. Raise it to reduce false positives. User settings only. |
+| `maximinion.secretScrubbing.enabled` | `true` | Enable secret scrubbing for Copy for AI and the Refiner commands. User settings only. |
 | `maximinion.entropyScoring.enabled` | `true` | Enable Shannon entropy scoring. |
 | `maximinion.semanticFolding.enabled` | `false` | Enable semantic folding via a local Ollama instance at `http://localhost:11434`. Requires entropy scoring to be enabled. |
 | `maximinion.semanticFolding.model` | `phi3` | Installed Ollama model used for semantic folding (see `ollama list`). |
@@ -97,6 +97,7 @@ All commands are in the Command Palette under **MaxiMinion:**.
 - Inline warnings skip environment variable references (such as `process.env.API_KEY`) and lower-confidence patterns by default; lower `maximinion.secretDiagnostics.minConfidence` to see more.
 - Token counts are estimates (~4 characters per token). Actual counts vary by model.
 - MaxiMinion works in Restricted Mode (untrusted folders). Semantic folding can only be enabled from user settings until the workspace is trusted.
+- Secret protection settings (`secretScrubbing.enabled`, `secretDiagnostics.enabled`, `secretDiagnostics.minConfidence`) can only be changed in your user settings. Values in a workspace's `.vscode/settings.json` are ignored, so a repository cannot turn redaction off.
 - The Refiner preview contains only the refined text (no report wrapper), so it can be copied straight into an LLM prompt with minimal token overhead. Full run details are in the **MaxiMinion** output channel.
 
 ## Install
