@@ -81,7 +81,7 @@ describe('sensitiveReason', () => {
   test('every example shown to users matches its rule', () => {
     for (const { reason, examples } of SENSITIVE_RULES) {
       for (const example of examples) {
-        const file = example.replace('*', 'name').replace(/\/$/, '/file');
+        const file = example.replace(/\*/g, 'name').replace(/\/$/, '/file');
         expect({ example, reason: sensitiveReason(`project/${file}`) }).toEqual({ example, reason });
       }
     }

@@ -15,6 +15,7 @@ All notable changes to the MaxiMinion VS Code extension are documented here.
 ### Security
 
 - Secret detection patterns for email addresses and database URLs no longer slow down sharply on long runs of text, which could freeze the editor on large files. Copy for AI whitespace compaction has the same fix.
+- Redaction is now linear in the number of secrets found (20,000 email addresses: about 4.6 s before, milliseconds now), and each match is replaced exactly where it was found. Previously an identical, unrelated earlier copy of the text could be replaced instead.
 - Requests to the local Ollama server refuse HTTP redirects, and the endpoint is fixed to `http://localhost:11434`.
 - See the new [Security Model](https://github.com/dev-rb-hub/maximinion-ce/blob/main/docs/SECURITY_MODEL.md).
 

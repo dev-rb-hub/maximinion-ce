@@ -125,25 +125,22 @@ export class Sanitizer {
    * Apply a single regex pattern to text
    */
   private applyPattern(text: string, compiled: CompiledPattern, patternName: string): string {
-    let result = text;
+    const replacement = `[REDACTED_${compiled.type}]`;
+    compiled.regex.lastIndex = 0;
 
-    for (const match of this.matches(compiled.regex, text)) {
-      const matched = match[0];
-      const replacement = `[REDACTED_${compiled.type}]`;
-
+    // One positional pass: each match is replaced where it was found, in linear time.
+    return text.replace(compiled.regex, (matched: string, ...args: unknown[]) => {
+      if (matched.length === 0) return matched;
       this.scrubHistory.push({
         type: compiled.type,
         pattern: patternName,
-        location: match.index,
+        location: args.find((arg): arg is number => typeof arg === 'number') ?? 0,
         length: matched.length,
         confidence: compiled.confidence,
         replacement
       });
-
-      result = result.replace(matched, replacement);
-    }
-
-    return result;
+      return replacement;
+    });
   }
 
   /**

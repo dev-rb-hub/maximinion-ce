@@ -136,7 +136,7 @@ export function getSecurityPosture(inputs: PostureInputs): PostureRow[] {
 const STATE_LABEL: Record<PostureState, string> = { on: '✅ On', off: '⛔ Off', warn: '⚠️ Attention', info: 'ℹ️ Info' };
 
 function cell(text: string): string {
-  return text.replace(/\|/g, '\\|').replace(/\r?\n/g, ' ');
+  return text.replace(/[\\|]/g, '\\$&').replace(/\r?\n/g, ' ');
 }
 
 export function renderPostureMarkdown(rows: PostureRow[]): string {

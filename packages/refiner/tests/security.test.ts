@@ -103,6 +103,27 @@ describe('Secret patterns resist ReDoS', () => {
     expect(Date.now() - start).toBeLessThan(1500);
   });
 
+  test('redaction is linear in the number of matches', () => {
+    const manyEmails = Array.from({ length: 20_000 }, (_, i) => `user${i}@example.com`).join(' ');
+    const start = Date.now();
+
+    const result = new Sanitizer().sanitize(manyEmails);
+
+    expect(result.scrubbed).toHaveLength(20_000);
+    expect(result.text).not.toContain('@example.com');
+    expect(Date.now() - start).toBeLessThan(1000);
+  });
+
+  test('each match is replaced where it was found, not at an earlier copy of the same text', () => {
+    const sanitizer = new Sanitizer();
+    sanitizer.addPattern('ASSIGNED', '(?<=key=)[a-z]{8}', 'API_KEY', 0.9);
+
+    const result = sanitizer.sanitize('label abcdefgh; key=abcdefgh');
+
+    expect(result.text).toBe('label abcdefgh; key=[REDACTED_API_KEY]');
+    expect(result.scrubbed[0]).toMatchObject({ pattern: 'ASSIGNED', location: 20 });
+  });
+
   test('the bounded patterns still find real secrets', () => {
     const sanitizer = new Sanitizer();
     const patternsIn = (text: string) => sanitizer.detectSecrets(text).map((item) => item.pattern);
