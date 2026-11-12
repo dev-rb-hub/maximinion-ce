@@ -35,4 +35,4 @@ We aim to acknowledge reports within 5 business days and, per responsible-disclo
 
 ## Scope
 
-This policy covers the Community Edition packages in this repository (`packages/refiner`, `packages/librarian`, `packages/manifest-generator`, `packages/proxy-transport`, and `packages/vscode-extension`). See [docs/GUIDES/security.md](docs/GUIDES/security.md) for broader data-handling and compliance information across all editions.
+This policy covers the Community Edition packages in this repository (`packages/refiner`, `packages/librarian`, `packages/manifest-generator`, `packages/proxy-transport`, and `packages/vscode-extension`). See [docs/SECURITY_MODEL.md](docs/SECURITY_MODEL.md) for the threat model, the controls in place, and known gaps, and [docs/GUIDES/security.md](docs/GUIDES/security.md) for data handling.

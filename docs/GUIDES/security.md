@@ -1,217 +1,72 @@
-# Security Best Practices & Data Handling
+# Security Guide
 
-Security guidelines for deploying and using MaxiMinion.AI.
+How MaxiMinion Community Edition handles your code, which secrets it detects, and how to use it safely. For the threat model, trust boundaries, and layered controls, see the [Security Model](../SECURITY_MODEL.md). To report a vulnerability, see [SECURITY.md](../../SECURITY.md).
 
-## Data Privacy
+## Data Handling
 
-### What Data Does MaxiMinion Process?
+Community Edition runs entirely on your machine.
 
-**Collected:**
-- Source code files and dependencies
-- AST/dependency graph structure
-- Code comments and documentation
-- File metadata (names, sizes)
+- **What it reads:** the files you choose to copy or analyse. The upcoming Context Pack (#32) will also read source files in your open workspace, through a guarded reader that skips credential files, binaries, large files, and anything outside the workspace.
+- **Where data goes:** to your clipboard when you use Copy for AI or Copy Sanitized File, to local preview tabs and output channels, and, only if you turn on semantic folding, to a local Ollama server at `http://localhost:11434`.
+- **What it stores:** extension settings, a first-run notice flag, and the *MaxiMinion Activity* log (file paths and counts, never file content), which VS Code keeps with its logs for recent sessions.
+- **What it sends to MaxiMinion or third parties:** nothing. There is no telemetry and no cloud service in Community Edition.
 
-**Not Collected:**
-- Runtime secrets (API keys are removed)
-- Personal information (PII is sanitized)
-- Environment variables (stripped during processing)
-- Credentials (never stored)
+## Secret Detection & Redaction
 
-### Data Retention
+Secrets are found with regular-expression patterns and replaced with markers such as `[REDACTED_API_KEY]`. Your source files are never changed unless you apply the **Redact** quick fix to an inline warning.
 
-| Edition | Retention | Location |
-|---------|-----------|----------|
-| Community | Session only | Local machine |
-| Professional | 90 days | Encrypted cloud storage |
-| Enterprise | Per contract | Customer choice |
+Built-in patterns (see [`regex-patterns.ts`](../../packages/refiner/src/utils/regex-patterns.ts)):
 
-### Data Deletion
+| Category | Patterns |
+| --- | --- |
+| Cloud and service keys | AWS access key IDs (`AKIA…`) and `aws_secret_access_key` assignments; Azure Storage connection strings; OpenAI project keys (`sk-proj-…`); GitHub personal access tokens (`ghp_…`); Slack bot tokens (`xoxb-…`) |
+| Credentials | Private key headers (`-----BEGIN … PRIVATE KEY-----`); database URLs with a user and password; JWTs; `password`, `token`, `api_key`, and `secret` assignments |
+| Personal information | Email addresses; US Social Security numbers; 13–16 digit card-like numbers (no checksum validation, so expect false positives) |
+| References | Environment variable references such as `process.env.API_KEY` (they name a secret but do not contain one; inline warnings ignore them) |
 
-```bash
-# Community: Automatic on session end
-# Professional: Request via dashboard
-# Enterprise: On-demand via API
-```
-
----
-
-## Secret Detection & Sanitization
-
-### Detected Patterns
-
-MaxiMinion detects and removes:
-
-**API Keys**
-- OpenAI: `sk-...`, `sk-proj-...`
-- Anthropic: `sk-ant-...`
-- AWS: `AKIA...`
-- GitHub: `ghp_...`, `ghs_...`
-- Stripe: `sk_live_...`, `sk_test_...`
-
-**Credentials**
-- Username:password patterns
-- Database connection strings
-- SSH private keys
-- JWT tokens
-- OAuth tokens
-
-**PII**
-- Email addresses
-- Phone numbers
-- Credit card numbers (Luhn check)
-- Social security numbers
-- IP addresses (optionally)
-
-**Environment Secrets**
-- Database passwords
-- API keys in .env files
-- Private key files
-- Configuration secrets
+Detection is pattern-based and not exhaustive. Secrets in other formats, or split across lines, can be missed. **Always review output before sharing it.**
 
 ### Custom Patterns
 
-Custom patterns are available programmatically only (the CLI has no flags):
+Custom patterns are available programmatically (the CLI has no flags). They are used by `sanitize()`, `detectSecrets()`, and `hasSecrets()`, with the type and confidence you give:
 
 ```typescript
-import { Refiner } from '@maximinion/refiner';
+import { Refiner, Sanitizer } from '@maximinion/refiner';
 
+// On a Refiner: addCustomSanitizationPattern(name, regexPattern, type?, confidence?)
 const refiner = new Refiner();
-// addCustomSanitizationPattern(name, regexPattern, type, confidence?)
-refiner.addCustomSanitizationPattern('my-secret', 'MY_SECRET_PREFIX_\\w+', 'GENERIC_SECRET');
+refiner.addCustomSanitizationPattern('ACME_KEY', 'ACME_[A-Z0-9]{12}', 'API_KEY', 0.9);
+refiner.sanitize('const k = "ACME_ABCDEF123456";').text; // const k = "[REDACTED_API_KEY]";
 
-// Verify the pattern is applied
-const { text, scrubbed } = refiner.sanitize('const k = "MY_SECRET_PREFIX_abc123";');
+// Or through configuration
+const sanitizer = new Sanitizer({
+  customRegexPatterns: {
+    ACME_KEY: { pattern: 'ACME_[A-Z0-9]{12}', type: 'API_KEY', confidence: 0.9, description: 'ACME key' },
+  },
+});
 ```
 
----
+- Patterns are compiled with the `g` and `i` flags.
+- Without a type or confidence, a custom pattern uses `GENERIC_SECRET` and `0.8`.
+- A custom pattern with the same name as a built-in pattern replaces it.
+- Empty or invalid patterns are rejected. Patterns that can match an empty string are safe but match nothing useful.
+- Keep patterns linear: avoid nested quantifiers such as `(a+)+`, because patterns run on untrusted file content.
+
+## Using the VS Code Extension Safely
+
+- **Protection settings are user-only.** Secret redaction and inline warning settings can only be changed in your user settings; a repository's `.vscode/settings.json` cannot turn them off.
+- **Credential files need confirmation.** Copy for AI asks before copying files such as `.env`, private keys, or Terraform state, and still redacts them if you go ahead.
+- **Hidden Unicode needs confirmation.** Copy for AI asks before copying text with bidirectional controls or invisible characters, which can hide instructions that an AI model still reads.
+- **Check the activity log.** **MaxiMinion: Show Activity Log** lists what was copied or sent, how many values were redacted, and what you declined.
+- **Check the security status.** The sidebar's **Security** section and **MaxiMinion: Show Security Status** show each protection's live state, read from the code that enforces it.
+- **Restricted Mode works.** In untrusted folders, Copy for AI, warnings, and sanitization work, and semantic folding cannot be enabled by the workspace.
+- **Semantic folding is local and optional.** It is off by default and only talks to Ollama on `localhost`. Summaries are lossy; review them.
 
 ## Network Security
 
-### TLS/SSL Configuration
+The extension makes no network requests except optional semantic folding to `http://localhost:11434`. The endpoint is fixed, not a setting, and HTTP redirects are refused.
 
-**Required for Professional/Enterprise:**
-```bash
-# Minimum: TLS 1.2
-# Recommended: TLS 1.3
-
-# Certificate pinning
-export CA_CERT_PATH=/etc/ssl/certs/maximinion-ca.crt
-```
-
-### API Authentication
-
-**Methods:**
-1. **API Keys** (Professional)
-   ```bash
-   curl -H "Authorization: Bearer max_abc123..." https://api.maximinion.ai/...
-   ```
-
-2. **OAuth2** (Enterprise)
-   ```bash
-   # Supports OIDC, SAML 2.0
-   ```
-
-3. **mTLS** (Enterprise)
-   ```bash
-   # Client certificate authentication
-   ```
-
-### Rate Limiting
-
-- **Community:** No rate limit (local)
-- **Professional:** 100 req/min per API key
-- **Enterprise:** Custom limits
-
----
-
-## Access Control
-
-### Role-Based Access Control (RBAC) - Enterprise
-
-| Role | Permissions |
-|------|-------------|
-| Admin | Full access, manage users, billing |
-| Editor | Create/modify manifests, upload code |
-| Viewer | Read-only access |
-| Auditor | Access logs, compliance reports |
-
-### API Key Management
-
-```bash
-# Generate new key
-curl -X POST https://api.maximinion.ai/keys \
-  -H "Authorization: Bearer ..." \
-  -d '{"name": "my-key"}'
-
-# Rotate keys
-curl -X POST https://api.maximinion.ai/keys/rotate/{key_id}
-
-# Revoke key
-curl -X DELETE https://api.maximinion.ai/keys/{key_id}
-```
-
----
-
-## Compliance & Certifications
-
-### Supported Standards
-
-| Standard | Edition | Status |
-|----------|---------|--------|
-| **GDPR** | Professional + | ✅ Compliant |
-| **CCPA** | Professional + | ✅ Compliant |
-| **HIPAA** | Enterprise | ✅ Available |
-| **SOC 2 Type II** | Enterprise | ✅ Available |
-| **ISO 27001** | Enterprise | ✅ Available |
-
-### Data Residency
-
-**Professional Edition:**
-- US (default)
-- EU (GDPR compliance)
-- APAC (Singapore)
-
-**Enterprise Edition:**
-- Customer datacenter
-- AWS/Azure/GCP regions
-- Air-gapped deployment
-
-### Right to be Forgotten (GDPR)
-
-```bash
-# Delete all data for user/project
-curl -X DELETE https://api.maximinion.ai/users/{user_id} \
-  -H "Authorization: Bearer ..."
-```
-
----
-
-## Vulnerability Reporting
-
-**Do not disclose vulnerabilities publicly!**
-
-### Responsible Disclosure
-
-1. Email: support@maximinion.ai
-2. Include: detailed reproduction steps
-3. Allow: 90 days for patch before disclosure
-
-### Supported Versions
-
-- **Latest:** Full security updates
-- **Previous:** 6 months of updates
-- **Older:** Security-critical only
-
----
-
-## Security Hardening
-
-### Community Edition
-
-The Proxy Transport has no CLI and runs in-process; it does not currently open
-a network port or socket. The HTTP/WebSocket switches can still be turned off
-explicitly in configuration:
+The Proxy Transport library has no CLI and runs in-process; it does not currently open a network port or socket. Its HTTP and WebSocket switches can be turned off explicitly:
 
 ```typescript
 import { ProxyTransport } from '@maximinion/proxy-transport';
@@ -219,133 +74,34 @@ import { ProxyTransport } from '@maximinion/proxy-transport';
 const proxy = new ProxyTransport({ enableHTTP: false, enableWebSocket: false });
 ```
 
-### Professional/Enterprise
+If you use the libraries directly, you are responsible for where their output goes. For example, `@maximinion/refiner` lets you configure any Ollama endpoint.
+
+## Professional and Enterprise Editions
+
+Hosted gateways, team access control, audit logging, and data residency options are planned for commercial editions. Their security controls will be documented when those editions are available. **Community Edition makes no compliance certification claims** (for example GDPR, HIPAA, SOC 2, or ISO 27001).
+
+## Checking the Project
+
+These run in CI on every pull request and can be run locally:
 
 ```bash
-# Enable WAF
-ENABLE_WAF=true
-
-# Enable rate limiting
-RATE_LIMIT_ENABLED=true
-RATE_LIMIT_REQUESTS=1000
-RATE_LIMIT_WINDOW=60
-
-# Disable weak ciphers
-DISABLE_WEAK_CIPHERS=true
-
-# Enable security headers
-ENABLE_SECURITY_HEADERS=true
+npm audit      # known vulnerabilities in dependencies
+npm test       # includes security tests: ReDoS limits, forbidden APIs, settings scope, guarded reads
 ```
 
-### Network Isolation
+CI also runs CodeQL analysis and GitHub dependency review. Release artifacts can be verified as described in [SECURITY.md](../../SECURITY.md#verifying-releases).
 
-```bash
-# Allow only specific IPs
-ALLOWED_CIDR_BLOCKS="10.0.0.0/8,172.16.0.0/12"
+## Reporting Vulnerabilities
 
-# VPC endpoint (AWS)
-ENABLE_VPC_ENDPOINT=true
-```
-
----
-
-## Audit Logging
-
-### What's Logged
-
-- Authentication attempts
-- API calls (inputs/outputs stripped of secrets)
-- Configuration changes
-- User actions
-- System events
-
-### Log Retention
-
-- **Professional:** 30 days
-- **Enterprise:** Per contract (1-7 years typical)
-
-### Log Format
-
-```json
-{
-  "timestamp": "2026-09-24T10:30:00Z",
-  "user_id": "user_abc123",
-  "action": "manifest_created",
-  "resource": "manifest_123",
-  "result": "success",
-  "ip_address": "203.0.113.42",
-  "user_agent": "MaxiMinion/1.0.0"
-}
-```
-
----
-
-## Testing Security
-
-### Running Security Checks
-
-```bash
-# OWASP dependency check
-npm run security-check
-
-# Vulnerability scan
-npm audit
-
-# SAST (Static Application Security Testing)
-npm run sast
-
-# Secret detection
-npm run detect-secrets
-```
-
-### Penetration Testing
-
-Available for Enterprise customers. Contact: support@maximinion.ai
-
----
-
-## Security Updates
-
-### Patch Schedule
-
-- **Critical:** Within 24 hours
-- **High:** Within 1 week
-- **Medium:** Within 2 weeks
-- **Low:** Next regular release
-
-### Notification
-
-- Email alerts for security updates
-- GitHub security advisories
-- Release notes
-
----
+Do not open a public issue. Use a [private security advisory](https://github.com/dev-rb-hub/maximinion-ce/security/advisories/new) or email support@maximinion.ai, as described in [SECURITY.md](../../SECURITY.md).
 
 ## FAQ
 
-**Q: Where is my code stored?**
-- Community: Nowhere (local only)
-- Professional: Encrypted AWS S3
-- Enterprise: Your choice (datacenter, cloud, air-gapped)
+**Where is my code stored?**
+Nowhere outside your machine. Community Edition keeps no copy of your code; the activity log records file paths and counts only.
 
-**Q: Is my code scanned by humans?**
-- No. Only by automated algorithms.
-- Professional/Enterprise: Zero knowledge architecture option.
+**Does MaxiMinion send my code anywhere?**
+Only where you put it: the clipboard when you copy, and a local Ollama server if you turn on semantic folding.
 
-**Q: Can you access my data?**
-- No. Community: Can't (local). Professional: Can't (encrypted). Enterprise: Only with explicit authorization.
-
-**Q: What about compliance requirements?**
-- See [Compliance & Certifications](#compliance--certifications) above.
-
----
-
-## Resources
-
-- [Security Policy](https://github.com/maximinion/maximinion.ai/security/policy)
-- [OWASP Top 10](https://owasp.org/www-project-top-ten/)
-- [CWE Top 25](https://cwe.mitre.org/top25/)
-
----
-
-**Security Questions?** Email: support@maximinion.ai
+**Can a repository I clone weaken MaxiMinion?**
+It cannot turn off redaction or warnings, point semantic folding at another server, or enable folding in an untrusted folder. See the [Security Model](../SECURITY_MODEL.md) for the full list of controls and their known gaps.

@@ -39,6 +39,14 @@ describe('compactWhitespace', () => {
   test('preserves first-line indentation of partial selections', () => {
     expect(compactWhitespace('\n\n    if x:\n        y()\n\n', 'python')).toBe('    if x:\n        y()');
   });
+
+  test('stays fast on long runs of whitespace that do not end a line', () => {
+    const text = 'a' + ' '.repeat(100_000) + 'b\n' + 'c' + '\t'.repeat(100_000) + 'd';
+    const start = Date.now();
+
+    expect(compactWhitespace(text, 'typescript')).toBe(text);
+    expect(Date.now() - start).toBeLessThan(250);
+  });
 });
 
 describe('findSecretRanges', () => {

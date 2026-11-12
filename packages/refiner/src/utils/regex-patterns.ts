@@ -68,9 +68,10 @@ export const SECRET_REGEX_PATTERNS = {
     description: 'Authentication Token'
   },
 
-  // Email Address Pattern
+  // Email Address Pattern. The lookbehind only starts a match at the beginning of a run of
+  // local-part characters, which keeps long runs without an `@` linear instead of quadratic.
   EMAIL: {
-    pattern: '[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}',
+    pattern: '(?<![a-zA-Z0-9._%+-])[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}',
     type: 'EMAIL' as const,
     confidence: 0.8,
     description: 'Email Address'
@@ -108,9 +109,11 @@ export const SECRET_REGEX_PATTERNS = {
     description: 'Generic Secret String'
   },
 
-  // Database Connection String
+  // Database Connection String (scheme://user:password@host). The user part ends at the first `:`,
+  // so there is one way to split the URL, and both parts are length-bounded so text with many
+  // URL prefixes and no `@` stays linear.
   DB_CONNECTION: {
-    pattern: '(mongodb|postgres|mysql|sql)://[^\\s]+:[^@\\s]+@[^\\s]+',
+    pattern: '(mongodb|postgres|mysql|sql)://[^\\s:]{1,256}:[^\\s@]{1,256}@\\S+',
     type: 'PRIVATE_KEY' as const,
     confidence: 0.85,
     description: 'Database Connection String'

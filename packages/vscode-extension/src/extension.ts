@@ -1,8 +1,14 @@
 import { Sanitizer, Refiner, EntropyScore, sameOllamaModel } from '@maximinion/refiner';
 import * as vscode from 'vscode';
+import { ActivityLog } from './guard/activity-log';
+import { copyToClipboard, createRefiner, OLLAMA_ENDPOINT } from './guard/egress';
+import { describeHiddenUnicode, findHiddenUnicode } from './guard/hidden-unicode';
+import { sensitiveReason } from './guard/sensitive-paths';
+import { getSecurityPosture, PostureInputs, PostureState, renderPostureMarkdown } from './guard/posture';
 import { buildAiPayload, estimateTokens, formatTokens, PayloadSource } from './payload';
 import { findSecretRanges, PII_TYPES } from './secret-ranges';
-import { userSetting } from './settings';
+import { findIgnoredOverrides, IgnoredOverride, userSetting } from './settings';
+import { readWorkspaceSettingSources, WORKSPACE_SETTINGS_FILES } from './guard/workspace-settings';
 
 export const CE_NOTICE =
   'MaxiMinion.AI Community Edition is provided completely free of charge for evaluation and individual use. ' +
@@ -20,6 +26,9 @@ const MAX_DIAGNOSTIC_CHARS = 500_000;
 function getConfig(): vscode.WorkspaceConfiguration {
   return vscode.workspace.getConfiguration('maximinion');
 }
+
+// Created in activate(); records what was read and sent (paths and counts only).
+let activityLog: ActivityLog;
 
 // Every notification is prefixed so users can tell which extension raised it.
 function info(message: string, ...actions: string[]): Thenable<string | undefined> {
@@ -40,36 +49,45 @@ function showHelp(step?: string): void {
   ).catch(() => vscode.env.openExternal(vscode.Uri.parse(HELP_URL)));
 }
 
-function sanitizeActiveDocument(): { text: string; count: number; language: string } | undefined {
+interface SanitizedDocument {
+  text: string;
+  count: number;
+  language: string;
+  scrubbing: boolean;
+  source: CollectedSource;
+}
+
+function sanitizeActiveDocument(): SanitizedDocument | undefined {
   const editor = vscode.window.activeTextEditor;
   if (!editor) {
     void warn('Open a text document before sanitizing.');
     return undefined;
   }
 
-  const scrubbingEnabled = userSetting(getConfig(), 'secretScrubbing.enabled', true);
-
-  if (!scrubbingEnabled) {
-    return { text: editor.document.getText(), count: 0, language: editor.document.languageId };
+  const { document } = editor;
+  const source = sourceFor(document);
+  const scrubbing = userSetting(getConfig(), 'secretScrubbing.enabled', true);
+  if (!scrubbing) {
+    return { text: source.text, count: 0, language: document.languageId, scrubbing, source };
   }
 
-  const result = new Sanitizer().sanitize(editor.document.getText());
-  return {
-    text: result.text,
-    count: result.scrubbed.length,
-    language: editor.document.languageId,
-  };
+  const result = new Sanitizer().sanitize(source.text);
+  return { text: result.text, count: result.scrubbed.length, language: document.languageId, scrubbing, source };
 }
 
-async function showSanitizedPreview(
-  result: { text: string; count: number; language: string },
-  message: string,
-): Promise<void> {
+async function showSanitizedPreview(result: SanitizedDocument, message: string): Promise<void> {
   const preview = await vscode.workspace.openTextDocument({
     content: result.text,
     language: result.language,
   });
   await vscode.window.showTextDocument(preview, { preview: true });
+  activityLog.record({
+    kind: 'preview',
+    command: 'Preview Sanitized File',
+    source: result.source.relativePath,
+    redacted: result.count,
+    scrubbing: result.scrubbing,
+  });
   void info(message);
 }
 
@@ -128,7 +146,7 @@ function createRunRefinerOnActiveDocument(
         `manifestExportFormat=${exportFormat}`,
     );
 
-    const refiner = new Refiner({ enableSemanticFolding: semanticFoldingEnabled, ollamaModel: foldingModel });
+    const refiner = createRefiner({ enableSemanticFolding: semanticFoldingEnabled, ollamaModel: foldingModel });
     let currentText = originalText;
     let scrubbedCount = 0;
 
@@ -161,7 +179,10 @@ function createRunRefinerOnActiveDocument(
     } else if (!entropy) {
       output.appendLine('Semantic folding: skipped (requires entropy scoring to be enabled)');
     } else {
-      const folded = await runSemanticFolding(refiner, currentText, foldingModel, output);
+      const folded = await runSemanticFolding(refiner, currentText, foldingModel, output, {
+        source: labelFor(editor.document),
+        scrubbing: secretScrubbingEnabled,
+      });
       if (folded) {
         foldedApplied = true;
         foldedTokensSaved = folded.tokensSaved;
@@ -193,6 +214,13 @@ function createRunRefinerOnActiveDocument(
       language: editor.document.languageId,
     });
     await vscode.window.showTextDocument(preview, { preview: true });
+    activityLog.record({
+      kind: 'preview',
+      command: 'Run Refiner',
+      source: labelFor(editor.document),
+      redacted: scrubbedCount,
+      scrubbing: secretScrubbingEnabled,
+    });
     output.show(true);
     const signal = entropy ? `signal ${entropy.rating}, ` : '';
     const sizeChange =
@@ -214,7 +242,6 @@ function createRunRefinerOnActiveDocument(
   };
 }
 
-const OLLAMA_URL = 'http://localhost:11434';
 const SAMPLE_CODE = 'function add(a: number, b: number): number {\n  return a + b;\n}\n';
 
 type FoldingCheck =
@@ -241,14 +268,14 @@ function foldingModel(): string {
 async function checkFoldingSetup(model: string): Promise<FoldingCheck> {
   let installed: string[];
   try {
-    installed = (await new Refiner({ ollamaModel: model }).listOllamaModels()).map((m) => m.name);
+    installed = (await createRefiner({ ollamaModel: model }).listOllamaModels()).map((m) => m.name);
   } catch {
     return {
       ok: false,
       reason: 'unreachable',
       model,
       installed: [],
-      message: `Ollama is not running at ${OLLAMA_URL}.`,
+      message: `Ollama is not running at ${OLLAMA_ENDPOINT}.`,
     };
   }
   if (!installed.some((name) => sameOllamaModel(name, model))) {
@@ -360,7 +387,14 @@ async function testSemanticFolding(): Promise<void> {
       const controller = new AbortController();
       token.onCancellationRequested(() => controller.abort());
       const started = Date.now();
-      const folded = await new Refiner({ ollamaModel: model, cacheFoldedSummaries: false }).fold(
+      activityLog.record({
+        kind: 'local-model',
+        endpoint: OLLAMA_ENDPOINT,
+        model,
+        source: 'built-in sample function (no workspace code)',
+        tokens: estimateTokens(SAMPLE_CODE),
+      });
+      const folded = await createRefiner({ ollamaModel: model, cacheFoldedSummaries: false }).fold(
         SAMPLE_CODE,
         controller.signal,
       );
@@ -405,6 +439,7 @@ async function runSemanticFolding(
   text: string,
   model: string,
   output: vscode.OutputChannel,
+  origin: { source: string; scrubbing: boolean },
 ): Promise<{ summary: string; tokensSaved: number } | undefined> {
   const check = await checkFoldingSetup(model);
   if (!check.ok) {
@@ -420,6 +455,14 @@ async function runSemanticFolding(
   }
 
   const controller = new AbortController();
+  activityLog.record({
+    kind: 'local-model',
+    endpoint: OLLAMA_ENDPOINT,
+    model,
+    source: origin.source,
+    tokens: estimateTokens(text),
+    scrubbing: origin.scrubbing,
+  });
   const folded = await vscode.window.withProgress(
     {
       location: vscode.ProgressLocation.Notification,
@@ -464,10 +507,30 @@ function labelFor(document: vscode.TextDocument): string {
   return document.uri.scheme === 'file' ? vscode.workspace.asRelativePath(document.uri, false) : document.fileName;
 }
 
+interface CollectedSource extends PayloadSource {
+  uri: vscode.Uri;
+  /** Path used for credential-file checks and the activity log. */
+  relativePath: string;
+}
+
+function sourceFor(document: vscode.TextDocument, selection?: vscode.Selection): CollectedSource {
+  const relativePath = labelFor(document);
+  if (selection && !selection.isEmpty) {
+    return {
+      uri: document.uri,
+      relativePath,
+      label: `${relativePath} (lines ${selection.start.line + 1}-${selection.end.line + 1})`,
+      language: document.languageId,
+      text: document.getText(selection),
+    };
+  }
+  return { uri: document.uri, relativePath, label: relativePath, language: document.languageId, text: document.getText() };
+}
+
 async function collectPayloadSources(
   uri?: vscode.Uri,
   uris?: vscode.Uri[],
-): Promise<PayloadSource[] | undefined> {
+): Promise<CollectedSource[] | undefined> {
   // Explorer menus pass the multi-selection array; editor menus and keybindings do not.
   const fromExplorer = Array.isArray(uris) && uris.length > 0;
   const targets = fromExplorer ? uris : uri ? [uri] : [];
@@ -483,26 +546,15 @@ async function collectPayloadSources(
       void warn('Open a file or select files in the Explorer before using Copy for AI.');
       return undefined;
     }
-    const { document, selection } = editor;
-    if (selection && !selection.isEmpty) {
-      return [
-        {
-          label: `${labelFor(document)} (lines ${selection.start.line + 1}-${selection.end.line + 1})`,
-          language: document.languageId,
-          text: document.getText(selection),
-        },
-      ];
-    }
-    return [{ label: labelFor(document), language: document.languageId, text: document.getText() }];
+    return [sourceFor(editor.document, editor.selection)];
   }
 
-  const sources: PayloadSource[] = [];
+  const sources: CollectedSource[] = [];
   for (const target of targets) {
     try {
       const stat = await vscode.workspace.fs.stat(target);
       if (stat.type & vscode.FileType.Directory) continue;
-      const document = await vscode.workspace.openTextDocument(target);
-      sources.push({ label: labelFor(document), language: document.languageId, text: document.getText() });
+      sources.push(sourceFor(await vscode.workspace.openTextDocument(target)));
     } catch {
       // Binary or unreadable files are skipped.
     }
@@ -510,13 +562,89 @@ async function collectPayloadSources(
   return sources;
 }
 
+/**
+ * Asks before copying files that usually hold credentials (for example `.env` or private keys).
+ * Returns the sources to copy, or undefined if the user cancels.
+ */
+async function confirmSensitiveSources(command: string, sources: CollectedSource[]): Promise<CollectedSource[] | undefined> {
+  const flagged = sources.flatMap((source) => {
+    const reason = sensitiveReason(source.relativePath);
+    return reason ? [{ source, reason }] : [];
+  });
+  if (flagged.length === 0) return sources;
+
+  const names = flagged.map(({ source, reason }) => `${source.relativePath} (${reason})`).join(', ');
+  const others = sources.filter((source) => !flagged.some((item) => item.source === source));
+  const choice = await vscode.window.showWarningMessage(
+    `MaxiMinion: ${names} usually ${flagged.length === 1 ? 'holds' : 'hold'} credentials. ` +
+      'Likely secrets are redacted, but detection is pattern-based. Copy anyway?',
+    { modal: true },
+    'Copy Anyway',
+    ...(others.length > 0 ? ['Skip These Files'] : []),
+  );
+  if (choice === 'Copy Anyway') return sources;
+
+  activityLog.record({
+    kind: 'declined',
+    command,
+    sources: flagged.map(({ source }) => source.relativePath),
+    reason: 'looks like a credentials file',
+  });
+  return choice === 'Skip These Files' ? others : undefined;
+}
+
+/**
+ * Hidden or bidirectional Unicode can hide instructions from a reader while an AI model still
+ * reads them. Text is never changed; the user decides whether to copy. Returns the number of
+ * hidden characters if the copy should go ahead, or undefined if the user cancels.
+ */
+async function confirmHiddenUnicode(command: string, sources: CollectedSource[]): Promise<number | undefined> {
+  const found = sources
+    .map((source) => ({ source, report: findHiddenUnicode(source.text) }))
+    .filter(({ report }) => report.total > 0);
+  const total = found.reduce((sum, { report }) => sum + report.total, 0);
+  if (total === 0) return 0;
+
+  const details = found.map(({ source, report }) => `${source.label}: ${describeHiddenUnicode(report)}`).join('; ');
+  const choice = await vscode.window.showWarningMessage(
+    `MaxiMinion: Hidden Unicode found (${details}). It can hide text or instructions from you that an AI model ` +
+      'still reads. Copy anyway?',
+    { modal: true },
+    'Copy Anyway',
+    'Show',
+  );
+  if (choice === 'Copy Anyway') return total;
+
+  activityLog.record({
+    kind: 'declined',
+    command,
+    sources: found.map(({ source }) => source.relativePath),
+    reason: `${total} hidden Unicode character(s)`,
+  });
+  if (choice === 'Show') {
+    const [{ source, report }] = found;
+    const document = await vscode.workspace.openTextDocument(source.uri);
+    const editor = vscode.window.activeTextEditor?.document === document ? vscode.window.activeTextEditor : undefined;
+    // A selection's offsets are relative to the selection start.
+    const base = editor && source.label !== source.relativePath ? document.offsetAt(editor.selection.start) : 0;
+    const position = document.positionAt(base + (report.firstOffset ?? 0));
+    await vscode.window.showTextDocument(document, { selection: new vscode.Range(position, position) });
+  }
+  return undefined;
+}
+
 async function copyForAI(uri?: vscode.Uri, uris?: vscode.Uri[]): Promise<void> {
-  const sources = await collectPayloadSources(uri, uris);
-  if (!sources) return;
-  if (sources.length === 0) {
+  const command = 'Copy for AI';
+  const collected = await collectPayloadSources(uri, uris);
+  if (!collected) return;
+  if (collected.length === 0) {
     void warn('No readable text files were selected for Copy for AI.');
     return;
   }
+  const sources = await confirmSensitiveSources(command, collected);
+  if (!sources || sources.length === 0) return;
+  const hiddenUnicode = await confirmHiddenUnicode(command, sources);
+  if (hiddenUnicode === undefined) return;
 
   const config = getConfig();
   const scrubSecrets = userSetting(config, 'secretScrubbing.enabled', true);
@@ -524,7 +652,15 @@ async function copyForAI(uri?: vscode.Uri, uris?: vscode.Uri[]): Promise<void> {
     scrubSecrets,
     compactWhitespace: config.get<boolean>('copyForAI.compactWhitespace', true),
   });
-  await vscode.env.clipboard.writeText(result.text);
+  await copyToClipboard(activityLog, result.text, {
+    kind: 'clipboard',
+    command,
+    sources: sources.map((source) => source.label),
+    redacted: result.redacted,
+    scrubbing: scrubSecrets,
+    tokens: result.payloadTokens,
+    hiddenUnicode,
+  });
 
   const redaction = scrubSecrets ? `${result.redacted} value(s) redacted` : 'secret scrubbing disabled';
   const summary =
@@ -700,6 +836,68 @@ function getNonce(): string {
   return nonce;
 }
 
+const SECURITY_STATUS_SCHEME = 'maximinion-security';
+const OVERRIDE_NOTICE_KEY = 'maximinion.ignoredOverridesNotified';
+
+// Workspace attempts to lower protection, refreshed when settings or settings files change.
+let ignoredOverrides: IgnoredOverride[] = [];
+let ignoredOverridesRun = 0;
+const postureListeners = new Set<() => void>();
+
+function currentPostureInputs(): PostureInputs {
+  const config = getConfig();
+  return {
+    scrubbing: userSetting(config, 'secretScrubbing.enabled', true),
+    diagnostics: userSetting(config, 'secretDiagnostics.enabled', true),
+    minConfidence: userSetting(config, 'secretDiagnostics.minConfidence', 0.75),
+    folding: config.get<boolean>('semanticFolding.enabled', false),
+    trusted: vscode.workspace.isTrusted !== false,
+    ignoredOverrides,
+  };
+}
+
+/** Opens a read-only Markdown report of the live security posture. */
+async function showSecurityStatus(): Promise<void> {
+  // A fresh query string makes VS Code render the current state instead of a cached document.
+  const uri = vscode.Uri.parse(`${SECURITY_STATUS_SCHEME}:Security%20Status.md?${Date.now()}`);
+  try {
+    await vscode.commands.executeCommand('markdown.showPreview', uri);
+  } catch {
+    await vscode.window.showTextDocument(await vscode.workspace.openTextDocument(uri), { preview: true });
+  }
+}
+
+/**
+ * Re-reads what the workspace tries to set, then tells the user, once per workspace and set of
+ * values, when that would lower protection. The values are already ignored; this makes that visible.
+ */
+async function refreshIgnoredOverrides(context: vscode.ExtensionContext): Promise<void> {
+  const run = ++ignoredOverridesRun;
+  const sources = await readWorkspaceSettingSources();
+  if (run !== ignoredOverridesRun) return;
+  ignoredOverrides = findIgnoredOverrides(getConfig(), sources);
+  postureListeners.forEach((listener) => listener());
+
+  const weakening = ignoredOverrides.filter((override) => override.weakens);
+  const settings = weakening.map(
+    (override) => `maximinion.${override.key} = ${JSON.stringify(override.attempted)} (${override.source})`,
+  );
+  const signature = settings.join(';');
+  if (!signature || context.workspaceState.get<string>(OVERRIDE_NOTICE_KEY) === signature) return;
+
+  void context.workspaceState.update(OVERRIDE_NOTICE_KEY, signature);
+  activityLog.record({ kind: 'override-ignored', settings });
+  void warn(
+    `This workspace's settings try to lower secret protection: ${settings.join(', ')}. ` +
+      'MaxiMinion ignores them and uses your user settings.',
+    'Show Security Status',
+  ).then((choice) => {
+    if (choice === 'Show Security Status') void showSecurityStatus();
+  });
+}
+
+const POSTURE_ICON: Record<PostureState, string> = { on: '✓', off: '✕', warn: '!', info: 'i' };
+
 class MaximinionSidebarProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = 'maximinion.sidebar';
 
@@ -712,13 +910,19 @@ class MaximinionSidebarProvider implements vscode.WebviewViewProvider {
         webviewView.webview.html = this.getHtml();
       }
     });
+    const trustListener = vscode.workspace.onDidGrantWorkspaceTrust(() => {
+      webviewView.webview.html = this.getHtml();
+    });
     const rerender = () => {
       webviewView.webview.html = this.getHtml();
     };
     foldingStatusListeners.add(rerender);
+    postureListeners.add(rerender);
     webviewView.onDidDispose(() => {
       configListener.dispose();
+      trustListener.dispose();
       foldingStatusListeners.delete(rerender);
+      postureListeners.delete(rerender);
     });
 
     webviewView.webview.onDidReceiveMessage((message: { command?: string }) => {
@@ -730,6 +934,8 @@ class MaximinionSidebarProvider implements vscode.WebviewViewProvider {
         showHelp: 'maximinion.showHelp',
         showProblems: 'workbench.actions.view.problems',
         testFolding: 'maximinion.testSemanticFolding',
+        securityStatus: 'maximinion.showSecurityStatus',
+        activityLog: 'maximinion.showActivityLog',
       };
       if (message.command === 'openDocs') {
         void vscode.env.openExternal(vscode.Uri.parse(HELP_URL));
@@ -748,6 +954,7 @@ class MaximinionSidebarProvider implements vscode.WebviewViewProvider {
     const tokenBudget = config.get<number>('tokenBudget', 8000);
     const diagnosticsEnabled = userSetting(config, 'secretDiagnostics.enabled', true);
     const onOff = (value: boolean) => (value ? 'on' : 'off');
+    const posture = getSecurityPosture(currentPostureInputs());
     const nonce = getNonce();
 
     return `<!DOCTYPE html>
@@ -769,6 +976,13 @@ class MaximinionSidebarProvider implements vscode.WebviewViewProvider {
   a { color: var(--vscode-textLink-foreground); cursor: pointer; }
   ul { margin: 4px 0; padding-left: 16px; }
   .notice { margin-top: 16px; font-size: 0.8em; opacity: 0.7; }
+  ul.posture { list-style: none; padding-left: 0; }
+  ul.posture li { margin: 2px 0; }
+  ul.posture .icon { display: inline-block; width: 1.2em; text-align: center; font-weight: bold; }
+  ul.posture li.on .icon { color: var(--vscode-testing-iconPassed); }
+  ul.posture li.off .icon { color: var(--vscode-errorForeground); }
+  ul.posture li.warn { color: var(--vscode-editorWarning-foreground); }
+  ul.posture li.info .icon { color: var(--vscode-textLink-foreground); }
 </style>
 </head>
 <body>
@@ -786,6 +1000,20 @@ class MaximinionSidebarProvider implements vscode.WebviewViewProvider {
   <h3>Secret warnings</h3>
   <p class="hint">Likely secrets are underlined and listed in the Problems panel as <b>MaxiMinion</b>. Press Ctrl+. on one to redact it.</p>
   <button class="secondary" data-command="showProblems">Show Problems Panel</button>
+
+  <h3>Security</h3>
+  <p class="hint">Live status of MaxiMinion's protections, read from the code that enforces them. Hover a row for details.</p>
+  <ul class="posture">
+    ${posture
+      .map(
+        (row) =>
+          `<li class="${row.state}" title="${escapeHtml(row.status)}"><span class="icon">${POSTURE_ICON[row.state]}</span> ` +
+          `${escapeHtml(row.control)}${row.state === 'off' ? ' (off)' : ''}${row.state === 'warn' ? ': needs attention' : ''}</li>`,
+      )
+      .join('\n    ')}
+  </ul>
+  <button class="secondary" data-command="securityStatus">Show Security Status</button>
+  <button class="secondary" data-command="activityLog">Show Activity Log</button>
 
   <h3>Current settings</h3>
   <ul>
@@ -817,11 +1045,13 @@ class MaximinionSidebarProvider implements vscode.WebviewViewProvider {
 
 export function activate(context: vscode.ExtensionContext): void {
   const outputChannel = vscode.window.createOutputChannel('MaxiMinion');
+  activityLog = new ActivityLog();
   const statusBar = new TokenStatusBar();
   const diagnostics = new SecretDiagnostics();
 
   context.subscriptions.push(
     outputChannel,
+    activityLog,
     statusBar,
     diagnostics,
     vscode.languages.registerCodeActionsProvider({ scheme: 'file' }, diagnostics, {
@@ -842,6 +1072,7 @@ export function activate(context: vscode.ExtensionContext): void {
       if (event.affectsConfiguration('maximinion')) {
         statusBar.update();
         diagnostics.refreshAll();
+        void refreshIgnoredOverrides(context);
       }
       if (event.affectsConfiguration('maximinion.semanticFolding')) {
         scheduleFoldingEnforcement();
@@ -858,13 +1089,30 @@ export function activate(context: vscode.ExtensionContext): void {
       await showSanitizedPreview(result, `Sanitized preview ready. Redacted ${result.count} value(s).`);
     }),
     vscode.commands.registerCommand('maximinion.copySanitizedActiveFile', async () => {
+      const command = 'Copy Sanitized File';
       const result = sanitizeActiveDocument();
       if (!result) return;
+      if (!(await confirmSensitiveSources(command, [result.source]))) return;
+      const hiddenUnicode = await confirmHiddenUnicode(command, [result.source]);
+      if (hiddenUnicode === undefined) return;
 
-      await vscode.env.clipboard.writeText(result.text);
+      await copyToClipboard(activityLog, result.text, {
+        kind: 'clipboard',
+        command,
+        sources: [result.source.label],
+        redacted: result.count,
+        scrubbing: result.scrubbing,
+        tokens: estimateTokens(result.text),
+        hiddenUnicode,
+      });
       void info(`Copied sanitized text. Redacted ${result.count} value(s).`);
     }),
     vscode.commands.registerCommand('maximinion.runRefinerOnActiveFile', createRunRefinerOnActiveDocument(outputChannel)),
+    vscode.commands.registerCommand('maximinion.showActivityLog', () => activityLog.show()),
+    vscode.workspace.registerTextDocumentContentProvider(SECURITY_STATUS_SCHEME, {
+      provideTextDocumentContent: () => renderPostureMarkdown(getSecurityPosture(currentPostureInputs())),
+    }),
+    vscode.commands.registerCommand('maximinion.showSecurityStatus', showSecurityStatus),
     vscode.commands.registerCommand('maximinion.openSettings', () => {
       void vscode.commands.executeCommand('workbench.action.openSettings', 'maximinion');
     }),
@@ -875,4 +1123,17 @@ export function activate(context: vscode.ExtensionContext): void {
   statusBar.update();
   void refreshFoldingStatus(false);
   showNoticeOnce(context);
+
+  const settingsFiles = vscode.workspace.createFileSystemWatcher(
+    `**/{${[...WORKSPACE_SETTINGS_FILES, '*.code-workspace'].join(',')}}`,
+  );
+  const onSettingsFile = () => void refreshIgnoredOverrides(context);
+  context.subscriptions.push(
+    settingsFiles,
+    settingsFiles.onDidChange(onSettingsFile),
+    settingsFiles.onDidCreate(onSettingsFile),
+    settingsFiles.onDidDelete(onSettingsFile),
+    vscode.workspace.onDidChangeWorkspaceFolders(onSettingsFile),
+  );
+  void refreshIgnoredOverrides(context);
 }

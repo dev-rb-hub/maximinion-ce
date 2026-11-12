@@ -725,26 +725,29 @@ graph LR
 
 ## Security Architecture
 
+The full threat model, trust boundaries, layered controls, and known gaps are in [docs/SECURITY_MODEL.md](docs/SECURITY_MODEL.md).
+
 ### Data Flow Protection
 
 ```mermaid
 graph TB
-    A["Raw Code<br/>(Contains Secrets)"]
-    B["Phase 1: Sanitizer<br/>16+ Secret Patterns<br/>PII Detection"]
-    C["Sanitized Code<br/>(Secrets Removed)"]
-    D["Phase 2-4<br/>All operations on clean data"]
-    E["LLM Receives Context<br/>(No Secrets)"]
+    A["Raw Code<br/>(May contain secrets)"]
+    B["Phase 1: Sanitizer<br/>Pattern-based secret<br/>and PII detection"]
+    C["Sanitized Code<br/>(Likely secrets redacted)"]
+    D["Phase 2-4<br/>Operate on sanitized data"]
+    E["LLM Receives Context<br/>(Review before sharing)"]
     
     A --> B --> C
     C --> D --> E
 ```
 
 **Security Measures:**
-1. **Secret Detection:** 16+ regex patterns (AWS, API keys, JWT, PII, etc.)
-2. **Content Hashing:** SHA-256 for cache keys (prevent plaintext keys in logs)
-3. **Session Isolation:** Per-client context isolation
-4. **Token Validation:** Future: JWT/OAuth2 support
-5. **Data Minimization:** Only store what's needed in cache
+1. **Secret Detection:** Pattern-based redaction of keys, tokens, credentials, and PII, with custom patterns; tested against ReDoS inputs. Detection is not exhaustive.
+2. **Untrusted Workspaces:** Workspace settings cannot weaken protection. A guarded reader for automatic workspace scans (used by the upcoming Context Pack) stays inside the workspace and skips credential files, symlinks out of the workspace, binaries, and large files.
+3. **Egress Control:** One clipboard path, one fixed local network endpoint (Ollama on `localhost`, redirects refused), no telemetry.
+4. **Input Screening:** Hidden or bidirectional Unicode is flagged before code is copied for AI.
+5. **Activity Log:** A local record of what was copied or sent (paths and counts only).
+6. **Session Isolation:** Per-session context in Proxy Transport. Token-based authentication is planned for any future network server.
 
 ---
 

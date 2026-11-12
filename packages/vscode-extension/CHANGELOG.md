@@ -2,6 +2,23 @@
 
 All notable changes to the MaxiMinion VS Code extension are documented here.
 
+## Unreleased
+
+### Added
+
+- **Credential file check:** Copy for AI and Copy Sanitized File ask before copying files that usually hold credentials, such as `.env`, private keys, `.npmrc`, or Terraform state. Explorer selections can skip just those files.
+- **Hidden Unicode check:** Copy for AI and Copy Sanitized File ask before copying text with bidirectional controls, invisible tag characters, or zero-width characters, which can hide instructions from you that an AI model still reads. **Show** jumps to the first one. Text is never changed.
+- **MaxiMinion: Show Activity Log** opens the **MaxiMinion Activity** log: what was copied or sent to the local model, how many values were redacted, and which copies you declined. Paths and counts only, never file content.
+- **Security status:** a **Security** section in the sidebar and a **MaxiMinion: Show Security Status** report show each protection's live state and the code that enforces it.
+- If a workspace's settings try to lower secret protection, MaxiMinion tells you once (the settings were already ignored) and records it in the activity log.
+
+### Security
+
+- Secret detection patterns for email addresses and database URLs no longer slow down sharply on long runs of text, which could freeze the editor on large files. Copy for AI whitespace compaction has the same fix.
+- Redaction is now linear in the number of secrets found (20,000 email addresses: about 4.6 s before, milliseconds now), and each match is replaced exactly where it was found. Previously an identical, unrelated earlier copy of the text could be replaced instead.
+- Requests to the local Ollama server refuse HTTP redirects, and the endpoint is fixed to `http://localhost:11434`.
+- See the new [Security Model](https://github.com/dev-rb-hub/maximinion-ce/blob/main/docs/SECURITY_MODEL.md).
+
 ## 0.3.2
 
 ### Security

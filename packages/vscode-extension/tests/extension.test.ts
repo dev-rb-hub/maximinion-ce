@@ -20,6 +20,7 @@ function makeDocument(text: string, path = 'test.ts', languageId = 'typescript')
 
 const commandHandlers = new Map<string, CommandHandler>();
 const configValues: Record<string, unknown> = {};
+const workspaceStateValues: Record<string, unknown> = {};
 // Values from a workspace's .vscode/settings.json; `get` applies them like a host that ignores setting scopes.
 const workspaceConfigValues: Record<string, unknown> = {};
 const globalStateValues: Record<string, unknown> = {};
@@ -58,7 +59,10 @@ const mockVscode = {
     clipboard: { writeText: jest.fn() },
     openExternal: jest.fn(),
   },
-  Uri: { parse: jest.fn((value: string) => ({ value })) },
+  Uri: {
+    parse: jest.fn((value: string) => ({ value })),
+    joinPath: jest.fn((base: { path: string }, ...parts: string[]) => ({ scheme: 'file', path: [base.path, ...parts].join('/') })),
+  },
   FileType: { File: 1, Directory: 2 },
   StatusBarAlignment: { Left: 1, Right: 2 },
   ProgressLocation: { Notification: 15 },
@@ -100,15 +104,17 @@ const mockVscode = {
     createStatusBarItem: jest.fn(() => statusBarItem),
     onDidChangeActiveTextEditor: jest.fn(disposable),
     onDidChangeTextEditorSelection: jest.fn(disposable),
-    createOutputChannel: jest.fn(() => ({
+    createOutputChannel: jest.fn((name: string) => ({
+      name,
       appendLine: jest.fn(),
+      info: jest.fn(),
       show: jest.fn(),
       dispose: jest.fn(),
     })),
   },
   workspace: {
     textDocuments: [] as MockDocument[],
-    fs: { stat: jest.fn() },
+    fs: { stat: jest.fn(), readFile: jest.fn() },
     asRelativePath: jest.fn((uri: { fsPath: string }) => uri.fsPath),
     openTextDocument: jest.fn(),
     getConfiguration: jest.fn(() => ({
@@ -126,10 +132,30 @@ const mockVscode = {
     onDidOpenTextDocument: jest.fn(disposable),
     onDidChangeTextDocument: jest.fn(disposable),
     onDidCloseTextDocument: jest.fn(disposable),
+    onDidGrantWorkspaceTrust: jest.fn(disposable),
+    onDidChangeWorkspaceFolders: jest.fn(disposable),
+    createFileSystemWatcher: jest.fn(() => ({
+      onDidChange: jest.fn(disposable),
+      onDidCreate: jest.fn(disposable),
+      onDidDelete: jest.fn(disposable),
+      dispose: jest.fn(),
+    })),
+    registerTextDocumentContentProvider: jest.fn(disposable),
+    isTrusted: true,
+    workspaceFolders: undefined as Array<{ uri: { path: string }; name: string }> | undefined,
+    workspaceFile: undefined as { scheme: string; path: string } | undefined,
   },
 };
 
 jest.mock('vscode', () => mockVscode, { virtual: true });
+
+function activityLines(): string[] {
+  const channel = (mockVscode.window.createOutputChannel.mock.results as Array<{ value: any }>)
+    .map((result) => result.value)
+    .filter((value) => value.name === 'MaxiMinion Activity')
+    .pop();
+  return channel ? (channel.info.mock.calls as string[][]).map((call) => call[0]) : [];
+}
 
 describe('MaxiMinion VS Code commands', () => {
   const sourceText = 'const apiKey = "sk-proj-abcdef1234567890abcdef1234567890";';
@@ -140,6 +166,12 @@ describe('MaxiMinion VS Code commands', () => {
     for (const key of Object.keys(configValues)) delete configValues[key];
     for (const key of Object.keys(workspaceConfigValues)) delete workspaceConfigValues[key];
     for (const key of Object.keys(globalStateValues)) delete globalStateValues[key];
+    for (const key of Object.keys(workspaceStateValues)) delete workspaceStateValues[key];
+    mockVscode.workspace.isTrusted = true;
+    mockVscode.workspace.workspaceFolders = undefined;
+    mockVscode.workspace.workspaceFile = undefined;
+    mockVscode.workspace.fs.stat.mockReset();
+    mockVscode.workspace.fs.readFile.mockReset();
     mockVscode.workspace.textDocuments = [];
     mockVscode.window.showInformationMessage.mockResolvedValue(undefined);
     mockVscode.window.showWarningMessage.mockResolvedValue(undefined);
@@ -155,6 +187,13 @@ describe('MaxiMinion VS Code commands', () => {
         get: (key: string) => globalStateValues[key],
         update: jest.fn((key: string, value: unknown) => {
           globalStateValues[key] = value;
+          return Promise.resolve();
+        }),
+      },
+      workspaceState: {
+        get: (key: string) => workspaceStateValues[key],
+        update: jest.fn((key: string, value: unknown) => {
+          workspaceStateValues[key] = value;
           return Promise.resolve();
         }),
       },
@@ -494,6 +533,197 @@ describe('MaxiMinion VS Code commands', () => {
     });
   });
 
+  describe('security guardrails', () => {
+    const secret = 'sk-proj-abcdef1234567890abcdef1234567890';
+
+    test('Copy for AI logs paths and counts, never content', async () => {
+      await commandHandlers.get('maximinion.copyForAI')!();
+
+      const [line, ...rest] = activityLines();
+      expect(rest).toEqual([]);
+      expect(line).toMatch(/^Copied to clipboard \(Copy for AI\): 1 source\(s\) \[test\.ts\], 1 redacted, secret redaction on, ~\d+ tokens$/);
+      expect(line).not.toContain(secret);
+      expect(line).not.toContain('apiKey');
+    });
+
+    test('asks before copying a credentials file and copies nothing if cancelled', async () => {
+      mockVscode.window.activeTextEditor = { document: makeDocument(`OPENAI_KEY=${secret}\n`, '.env', 'dotenv') };
+
+      await commandHandlers.get('maximinion.copyForAI')!();
+
+      expect(mockVscode.window.showWarningMessage).toHaveBeenCalledWith(
+        expect.stringContaining('.env (environment file) usually holds credentials'),
+        { modal: true },
+        'Copy Anyway',
+      );
+      expect(mockVscode.env.clipboard.writeText).not.toHaveBeenCalled();
+      expect(activityLines()).toEqual(['Not copied (Copy for AI): [.env], looks like a credentials file']);
+    });
+
+    test('copies a credentials file, still redacted, only when the user confirms', async () => {
+      mockVscode.window.activeTextEditor = { document: makeDocument(`OPENAI_KEY=${secret}\n`, '.env', 'dotenv') };
+      mockVscode.window.showWarningMessage.mockResolvedValueOnce('Copy Anyway');
+
+      await commandHandlers.get('maximinion.copyForAI')!();
+
+      const copied = mockVscode.env.clipboard.writeText.mock.calls[0][0] as string;
+      expect(copied).toContain('### .env');
+      expect(copied).not.toContain(secret);
+    });
+
+    test('can skip credentials files in an Explorer selection and copy the rest', async () => {
+      const code = makeDocument('export const a = 1;', 'src/a.ts');
+      const env = makeDocument('PASSWORD=hunter2hunter2', 'config/.env.local', 'dotenv');
+      const template = makeDocument('PASSWORD=', '.env.example', 'dotenv');
+      mockVscode.workspace.fs.stat.mockResolvedValue({ type: mockVscode.FileType.File });
+      mockVscode.workspace.openTextDocument.mockImplementation(async (uri: unknown) =>
+        [code, env, template].find((doc) => doc.uri === uri),
+      );
+      mockVscode.window.showWarningMessage.mockResolvedValueOnce('Skip These Files');
+
+      await commandHandlers.get('maximinion.copyForAI')!(code.uri, [code.uri, env.uri, template.uri]);
+
+      const copied = mockVscode.env.clipboard.writeText.mock.calls[0][0] as string;
+      expect(copied).toContain('### src/a.ts');
+      expect(copied).toContain('### .env.example');
+      expect(copied).not.toContain('config/.env.local');
+      expect(activityLines()[0]).toBe('Not copied (Copy for AI): [config/.env.local], looks like a credentials file');
+    });
+
+    test('asks before copying hidden Unicode and never strips it', async () => {
+      const trojan = 'const isAdmin = false; /*\u202E } if (isAdmin) \u2066*/';
+      mockVscode.window.activeTextEditor = { document: makeDocument(trojan) };
+
+      await commandHandlers.get('maximinion.copyForAI')!();
+      expect(mockVscode.window.showWarningMessage).toHaveBeenCalledWith(
+        expect.stringContaining('Hidden Unicode found (test.ts: 2 bidirectional control(s))'),
+        { modal: true },
+        'Copy Anyway',
+        'Show',
+      );
+      expect(mockVscode.env.clipboard.writeText).not.toHaveBeenCalled();
+
+      mockVscode.window.showWarningMessage.mockResolvedValueOnce('Copy Anyway');
+      await commandHandlers.get('maximinion.copyForAI')!();
+      expect(mockVscode.env.clipboard.writeText.mock.calls[0][0]).toContain('\u202E');
+      expect(activityLines().pop()).toMatch(/, 2 hidden Unicode character\(s\)$/);
+    });
+
+    test('Copy Sanitized File uses the same checks and activity log', async () => {
+      mockVscode.window.activeTextEditor = { document: makeDocument(`key: ${secret}`, 'deploy/server.pem') };
+
+      await commandHandlers.get('maximinion.copySanitizedActiveFile')!();
+      expect(mockVscode.env.clipboard.writeText).not.toHaveBeenCalled();
+
+      mockVscode.window.showWarningMessage.mockResolvedValueOnce('Copy Anyway');
+      await commandHandlers.get('maximinion.copySanitizedActiveFile')!();
+      expect(mockVscode.env.clipboard.writeText).toHaveBeenCalledWith(expect.not.stringContaining(secret));
+      expect(activityLines().pop()).toMatch(/^Copied to clipboard \(Copy Sanitized File\): 1 source\(s\) \[deploy\/server\.pem\]/);
+    });
+
+    test('Show Activity Log opens the activity channel', () => {
+      commandHandlers.get('maximinion.showActivityLog')!();
+
+      const channel = (mockVscode.window.createOutputChannel.mock.results as Array<{ value: any }>)
+        .map((result) => result.value)
+        .find((value) => value.name === 'MaxiMinion Activity');
+      expect(mockVscode.window.createOutputChannel).toHaveBeenCalledWith('MaxiMinion Activity', { log: true });
+      expect(channel.show).toHaveBeenCalled();
+    });
+
+    test('Show Security Status opens a live report as a Markdown preview', async () => {
+      configValues['secretScrubbing.enabled'] = false;
+      await commandHandlers.get('maximinion.showSecurityStatus')!();
+
+      const [command, uri] = mockVscode.commands.executeCommand.mock.calls.find((call: unknown[]) => call[0] === 'markdown.showPreview')!;
+      expect(command).toBe('markdown.showPreview');
+      expect((uri as { value: string }).value).toMatch(/^maximinion-security:Security%20Status\.md\?\d+$/);
+
+      const [scheme, provider] = (mockVscode.workspace.registerTextDocumentContentProvider.mock.calls as any[])[0];
+      expect(scheme).toBe('maximinion-security');
+      const report = provider.provideTextDocumentContent(uri) as string;
+      expect(report).toContain('# MaxiMinion Security Status');
+      expect(report).toMatch(/\| Secret redaction \| ⛔ Off \| Off in your user settings/);
+      expect(report).toContain('http://localhost:11434');
+    });
+
+    const flush = () => new Promise((resolve) => setImmediate(resolve));
+
+    test('tells the user once when a workspace settings file tries to lower protection', async () => {
+      // VS Code drops application-scoped keys from workspace settings, so the file is the only place to see them.
+      mockVscode.workspace.workspaceFolders = [{ uri: { path: '/ws' }, name: 'ws' }];
+      const settingsJsonc =
+        '{\n  // comments and trailing commas are allowed\n  "maximinion.secretScrubbing.enabled": false,\n' +
+        '  "maximinion": { "secretDiagnostics": { "minConfidence": 0.99 } },\n}';
+      mockVscode.workspace.fs.stat.mockImplementation(async (uri: { path: string }) => {
+        if (uri.path !== '/ws/.vscode/settings.json') throw new Error('ENOENT');
+        return { type: mockVscode.FileType.File, size: settingsJsonc.length };
+      });
+      mockVscode.workspace.fs.readFile.mockResolvedValue(new TextEncoder().encode(settingsJsonc));
+      const configCallback = (mockVscode.workspace.onDidChangeConfiguration.mock.calls as any[])[0][0];
+
+      configCallback({ affectsConfiguration: () => true });
+      await flush();
+      configCallback({ affectsConfiguration: () => true });
+      await flush();
+
+      const expected =
+        'maximinion.secretScrubbing.enabled = false (.vscode/settings.json), ' +
+        'maximinion.secretDiagnostics.minConfidence = 0.99 (.vscode/settings.json)';
+      const notices = (mockVscode.window.showWarningMessage.mock.calls as string[][]).filter((call) =>
+        call[0].includes('try to lower secret protection'),
+      );
+      expect(notices).toHaveLength(1);
+      expect(notices[0][0]).toContain(expected);
+      expect(notices[0][1]).toBe('Show Security Status');
+      expect(activityLines()).toEqual([`Ignored workspace setting(s) that would lower protection: ${expected}`]);
+
+      await commandHandlers.get('maximinion.showSecurityStatus')!();
+      const [, provider] = (mockVscode.workspace.registerTextDocumentContentProvider.mock.calls as any[])[0];
+      expect(provider.provideTextDocumentContent()).toMatch(
+        /\| Protection settings \| ⚠️ Attention \| This workspace tries to lower protection \(maximinion\.secretScrubbing\.enabled = false in \.vscode\/settings\.json/,
+      );
+    });
+
+    test('also reports values a host exposes through inspect()', async () => {
+      workspaceConfigValues['secretDiagnostics.enabled'] = false;
+      const configCallback = (mockVscode.workspace.onDidChangeConfiguration.mock.calls as any[])[0][0];
+
+      configCallback({ affectsConfiguration: () => true });
+      await flush();
+
+      expect(mockVscode.window.showWarningMessage).toHaveBeenCalledWith(
+        expect.stringContaining('maximinion.secretDiagnostics.enabled = false (workspace settings)'),
+        'Show Security Status',
+      );
+    });
+
+    test('does not warn about workspace settings that only make protection stricter', async () => {
+      workspaceConfigValues['secretDiagnostics.minConfidence'] = 0.5;
+      const configCallback = (mockVscode.workspace.onDidChangeConfiguration.mock.calls as any[])[0][0];
+
+      configCallback({ affectsConfiguration: () => true });
+      await flush();
+
+      expect(mockVscode.window.showWarningMessage).not.toHaveBeenCalled();
+    });
+
+    test('the sidebar shows the security posture with escaped details', () => {
+      mockVscode.workspace.isTrusted = false;
+      const provider = (mockVscode.window.registerWebviewViewProvider.mock.calls as any[])[0][1];
+      const view = {
+        webview: { options: {}, html: '', onDidReceiveMessage: jest.fn() },
+        onDidDispose: jest.fn(),
+      };
+
+      provider.resolveWebviewView(view);
+
+      expect(view.webview.html).toContain('<h3>Security</h3>');
+      expect(view.webview.html).toContain('title="Restricted Mode: this workspace cannot turn on semantic folding."');
+      expect(view.webview.html).toContain('data-command="securityStatus"');
+    });
+  });
+
   describe('semantic folding', () => {
     const realFetch = global.fetch;
     let generateCalls: number;
@@ -538,6 +768,23 @@ describe('MaxiMinion VS Code commands', () => {
         language: 'typescript',
       });
       expect(outputLines()).toContainEqual(expect.stringContaining('Semantic folding: applied with gemma4:26b'));
+    });
+
+    test('only contacts the fixed local endpoint, refuses redirects, and logs what was sent', async () => {
+      configValues['semanticFolding.model'] = 'gemma4:26b';
+      mockOllama({ models: ['gemma4:26b'], summary: 'Adds numbers.' });
+
+      await commandHandlers.get('maximinion.runRefinerOnActiveFile')!();
+
+      const calls = (global.fetch as jest.Mock).mock.calls as Array<[string, RequestInit | undefined]>;
+      expect(calls.length).toBeGreaterThan(0);
+      for (const [url, init] of calls) {
+        expect(String(url)).toMatch(/^http:\/\/localhost:11434\//);
+        expect(init?.redirect).toBe('error');
+      }
+      expect(activityLines()).toContainEqual(
+        expect.stringMatching(/^Sent to local model gemma4:26b at http:\/\/localhost:11434: test\.ts, ~\d+ tokens, secret redaction on$/),
+      );
     });
 
     test('explains a missing model, lists installed ones, and offers to switch', async () => {
