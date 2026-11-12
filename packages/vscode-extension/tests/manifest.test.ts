@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { USER_ONLY_SETTINGS } from '../src/settings';
 
 const root = path.join(__dirname, '..');
 const manifest = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
@@ -37,9 +38,22 @@ describe('extension manifest', () => {
     for (const [key, schema] of Object.entries<Record<string, unknown>>(properties)) {
       expect({ key, explained: Boolean(schema.markdownDescription || schema.description) }).toMatchObject({ explained: true });
     }
-    const read = new Set([...source.matchAll(/get<\w+>\('([^']+)'/g)].map((m) => `maximinion.${m[1]}`));
+    const read = new Set(
+      [...source.matchAll(/get<\w+>\('([^']+)'|userSetting\(\w+(?:\(\))?, '([^']+)'/g)].map(
+        (m) => `maximinion.${m[1] ?? m[2]}`,
+      ),
+    );
     for (const key of read) {
       expect({ key, declared: key in properties }).toMatchObject({ declared: true });
+    }
+  });
+
+  test('settings that weaken protection can only be set in user settings', () => {
+    const properties = Object.assign({}, ...contributes.configuration.map((c: { properties: object }) => c.properties));
+    for (const key of USER_ONLY_SETTINGS) {
+      expect({ key, scope: properties[`maximinion.${key}`]?.scope }).toEqual({ key, scope: 'application' });
+      expect(source).not.toMatch(new RegExp(`\\.get(<\\w+>)?\\('${key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}'`));
+      expect(source).toContain(`'${key}'`);
     }
   });
 

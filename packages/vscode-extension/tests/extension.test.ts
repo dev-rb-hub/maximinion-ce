@@ -20,6 +20,8 @@ function makeDocument(text: string, path = 'test.ts', languageId = 'typescript')
 
 const commandHandlers = new Map<string, CommandHandler>();
 const configValues: Record<string, unknown> = {};
+// Values from a workspace's .vscode/settings.json; `get` applies them like a host that ignores setting scopes.
+const workspaceConfigValues: Record<string, unknown> = {};
 const globalStateValues: Record<string, unknown> = {};
 const diagnosticCollection = { set: jest.fn(), delete: jest.fn(), dispose: jest.fn() };
 const statusBarItem = {
@@ -110,8 +112,14 @@ const mockVscode = {
     asRelativePath: jest.fn((uri: { fsPath: string }) => uri.fsPath),
     openTextDocument: jest.fn(),
     getConfiguration: jest.fn(() => ({
-      get: jest.fn((key: string, defaultValue: unknown) => configValues[key] ?? defaultValue),
-      inspect: jest.fn((key: string) => ({ key, globalValue: configValues[key] })),
+      get: jest.fn(
+        (key: string, defaultValue: unknown) => workspaceConfigValues[key] ?? configValues[key] ?? defaultValue,
+      ),
+      inspect: jest.fn((key: string) => ({
+        key,
+        globalValue: configValues[key],
+        workspaceValue: workspaceConfigValues[key],
+      })),
       update: configUpdate,
     })),
     onDidChangeConfiguration: jest.fn(disposable),
@@ -130,6 +138,7 @@ describe('MaxiMinion VS Code commands', () => {
     jest.clearAllMocks();
     commandHandlers.clear();
     for (const key of Object.keys(configValues)) delete configValues[key];
+    for (const key of Object.keys(workspaceConfigValues)) delete workspaceConfigValues[key];
     for (const key of Object.keys(globalStateValues)) delete globalStateValues[key];
     mockVscode.workspace.textDocuments = [];
     mockVscode.window.showInformationMessage.mockResolvedValue(undefined);
@@ -177,6 +186,26 @@ describe('MaxiMinion VS Code commands', () => {
     expect(mockVscode.env.clipboard.writeText).toHaveBeenCalledWith(
       expect.not.stringContaining('sk-proj-abcdef1234567890abcdef1234567890'),
     );
+  });
+
+  test('ignores workspace settings that try to turn off secret redaction', async () => {
+    workspaceConfigValues['secretScrubbing.enabled'] = false;
+
+    await commandHandlers.get('maximinion.copySanitizedActiveFile')!();
+    await commandHandlers.get('maximinion.copyForAI')!();
+
+    for (const [text] of mockVscode.env.clipboard.writeText.mock.calls as any[]) {
+      expect(text).not.toContain('sk-proj-abcdef1234567890abcdef1234567890');
+    }
+    expect(mockVscode.env.clipboard.writeText).toHaveBeenCalledTimes(2);
+  });
+
+  test('still lets the user turn off secret redaction in user settings', async () => {
+    configValues['secretScrubbing.enabled'] = false;
+
+    await commandHandlers.get('maximinion.copySanitizedActiveFile')!();
+
+    expect(mockVscode.env.clipboard.writeText).toHaveBeenCalledWith(sourceText);
   });
 
   test('warns and does nothing when there is no active editor', async () => {
@@ -444,6 +473,13 @@ describe('MaxiMinion VS Code commands', () => {
       );
 
       expect(diagnostics).toEqual([]);
+    });
+
+    test('ignores workspace settings that try to hide secret warnings', () => {
+      workspaceConfigValues['secretDiagnostics.enabled'] = false;
+      workspaceConfigValues['secretDiagnostics.minConfidence'] = 1;
+
+      expect(refreshWith(makeDocument(sourceText))).toHaveLength(1);
     });
 
     test('clears diagnostics when disabled in settings', () => {

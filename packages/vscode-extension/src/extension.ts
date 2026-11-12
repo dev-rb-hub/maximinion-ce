@@ -2,6 +2,7 @@ import { Sanitizer, Refiner, EntropyScore, sameOllamaModel } from '@maximinion/r
 import * as vscode from 'vscode';
 import { buildAiPayload, estimateTokens, formatTokens, PayloadSource } from './payload';
 import { findSecretRanges, PII_TYPES } from './secret-ranges';
+import { userSetting } from './settings';
 
 export const CE_NOTICE =
   'MaxiMinion.AI Community Edition is provided completely free of charge for evaluation and individual use. ' +
@@ -46,9 +47,7 @@ function sanitizeActiveDocument(): { text: string; count: number; language: stri
     return undefined;
   }
 
-  const scrubbingEnabled = vscode.workspace
-    .getConfiguration('maximinion')
-    .get<boolean>('secretScrubbing.enabled', true);
+  const scrubbingEnabled = userSetting(getConfig(), 'secretScrubbing.enabled', true);
 
   if (!scrubbingEnabled) {
     return { text: editor.document.getText(), count: 0, language: editor.document.languageId };
@@ -111,7 +110,7 @@ function createRunRefinerOnActiveDocument(
     }
 
     const config = vscode.workspace.getConfiguration('maximinion');
-    const secretScrubbingEnabled = config.get<boolean>('secretScrubbing.enabled', true);
+    const secretScrubbingEnabled = userSetting(config, 'secretScrubbing.enabled', true);
     const entropyScoringEnabled = config.get<boolean>('entropyScoring.enabled', true);
     const semanticFoldingEnabled = config.get<boolean>('semanticFolding.enabled', false);
     const foldingModel = config.get<string>('semanticFolding.model', 'phi3').trim() || 'phi3';
@@ -520,7 +519,7 @@ async function copyForAI(uri?: vscode.Uri, uris?: vscode.Uri[]): Promise<void> {
   }
 
   const config = getConfig();
-  const scrubSecrets = config.get<boolean>('secretScrubbing.enabled', true);
+  const scrubSecrets = userSetting(config, 'secretScrubbing.enabled', true);
   const result = buildAiPayload(sources, {
     scrubSecrets,
     compactWhitespace: config.get<boolean>('copyForAI.compactWhitespace', true),
@@ -589,7 +588,7 @@ class SecretDiagnostics implements vscode.CodeActionProvider, vscode.Disposable 
     const config = getConfig();
     const text = document.getText();
     if (
-      !config.get<boolean>('secretDiagnostics.enabled', true) ||
+      !userSetting(config, 'secretDiagnostics.enabled', true) ||
       !DIAGNOSTIC_SCHEMES.has(document.uri.scheme) ||
       text.length > MAX_DIAGNOSTIC_CHARS
     ) {
@@ -597,7 +596,7 @@ class SecretDiagnostics implements vscode.CodeActionProvider, vscode.Disposable 
       return;
     }
 
-    const minConfidence = config.get<number>('secretDiagnostics.minConfidence', 0.75);
+    const minConfidence = userSetting(config, 'secretDiagnostics.minConfidence', 0.75);
     const diagnostics = findSecretRanges(text, minConfidence).map((range) => {
       const diagnostic = new vscode.Diagnostic(
         new vscode.Range(document.positionAt(range.start), document.positionAt(range.end)),
@@ -742,12 +741,12 @@ class MaximinionSidebarProvider implements vscode.WebviewViewProvider {
 
   private getHtml(): string {
     const config = vscode.workspace.getConfiguration('maximinion');
-    const scrubbingEnabled = config.get<boolean>('secretScrubbing.enabled', true);
+    const scrubbingEnabled = userSetting(config, 'secretScrubbing.enabled', true);
     const entropyScoringEnabled = config.get<boolean>('entropyScoring.enabled', true);
     const semanticFoldingEnabled = config.get<boolean>('semanticFolding.enabled', false);
     const exportFormat = config.get<string>('manifest.exportFormat', 'json');
     const tokenBudget = config.get<number>('tokenBudget', 8000);
-    const diagnosticsEnabled = config.get<boolean>('secretDiagnostics.enabled', true);
+    const diagnosticsEnabled = userSetting(config, 'secretDiagnostics.enabled', true);
     const onOff = (value: boolean) => (value ? 'on' : 'off');
     const nonce = getNonce();
 

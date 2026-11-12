@@ -2,7 +2,7 @@
   "name": "maximinion",
   "displayName": "MaxiMinion",
   "description": "Local-first context guard for AI coding: redact secrets, see token counts, and copy clean, compact code into any AI chat.",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "publisher": "maximinion",
   "private": true,
   "license": "MIT",
@@ -256,22 +256,25 @@
           "maximinion.secretScrubbing.enabled": {
             "type": "boolean",
             "default": true,
+            "scope": "application",
             "order": 1,
-            "markdownDescription": "Redact likely secrets (API keys, cloud credentials, tokens, private keys, connection strings, emails) as `[REDACTED_TYPE]` when using **Copy for AI**, **Preview Sanitized File**, **Copy Sanitized File**, and the **Refiner**. Your source file is never changed by these commands.\n\nDetection is pattern-based and not exhaustive — always review output before sharing."
+            "markdownDescription": "Redact likely secrets (API keys, cloud credentials, tokens, private keys, connection strings, emails) as `[REDACTED_TYPE]` when using **Copy for AI**, **Preview Sanitized File**, **Copy Sanitized File**, and the **Refiner**. Your source file is never changed by these commands.\n\nDetection is pattern-based and not exhaustive — always review output before sharing.\n\nCan only be changed in your user settings, so a workspace cannot turn redaction off."
           },
           "maximinion.secretDiagnostics.enabled": {
             "type": "boolean",
             "default": true,
+            "scope": "application",
             "order": 2,
-            "markdownDescription": "Underline likely secrets in open files and list them in the **Problems** panel (source: `MaxiMinion`). Use the lightbulb quick fix **Redact with [REDACTED_…]** to replace a value in your file."
+            "markdownDescription": "Underline likely secrets in open files and list them in the **Problems** panel (source: `MaxiMinion`). Use the lightbulb quick fix **Redact with [REDACTED_…]** to replace a value in your file.\n\nCan only be changed in your user settings, so a workspace cannot hide these warnings."
           },
           "maximinion.secretDiagnostics.minConfidence": {
             "type": "number",
             "default": 0.75,
             "minimum": 0,
             "maximum": 1,
+            "scope": "application",
             "order": 3,
-            "markdownDescription": "How confident a pattern must be (0–1) before an inline warning is shown.\n\n- `0.9`+: only very specific formats (AWS, Azure, GitHub, Slack, and OpenAI keys, private keys, JWTs)\n- `0.75` (default): also generic `apiKey = \"…\"` assignments, database URLs with passwords, emails, and SSNs\n- `0.6`: also passwords, tokens, generic secrets, and card-like numbers (noisier)\n\nEnvironment variable references such as `process.env.API_KEY` are never flagged."
+            "markdownDescription": "How confident a pattern must be (0–1) before an inline warning is shown.\n\n- `0.9`+: only very specific formats (AWS, Azure, GitHub, Slack, and OpenAI keys, private keys, JWTs)\n- `0.75` (default): also generic `apiKey = \"…\"` assignments, database URLs with passwords, emails, and SSNs\n- `0.6`: also passwords, tokens, generic secrets, and card-like numbers (noisier)\n\nEnvironment variable references such as `process.env.API_KEY` are never flagged.\n\nCan only be changed in your user settings."
           }
         }
       },
