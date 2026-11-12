@@ -13,8 +13,24 @@ import {
 } from './types';
 import { SECRET_REGEX_PATTERNS } from '../../utils/regex-patterns';
 
+/** Type used for custom patterns that do not specify one. */
+export const DEFAULT_CUSTOM_PATTERN_TYPE: SecretType = 'GENERIC_SECRET';
+/** Confidence used for custom patterns that do not specify one. */
+export const DEFAULT_CUSTOM_PATTERN_CONFIDENCE = 0.8;
+
+interface CompiledPattern {
+  regex: RegExp;
+  type: SecretType;
+  confidence: number;
+}
+
+function clampConfidence(value: number | undefined): number {
+  if (typeof value !== 'number' || Number.isNaN(value)) return DEFAULT_CUSTOM_PATTERN_CONFIDENCE;
+  return Math.min(Math.max(value, 0), 1);
+}
+
 export class Sanitizer {
-  private regexPatterns: Map<string, RegExp>;
+  private regexPatterns: Map<string, CompiledPattern>;
   private scrubHistory: ScrubbedItem[] = [];
 
   constructor(config?: RefinerConfig) {
@@ -22,27 +38,32 @@ export class Sanitizer {
   }
 
   /**
-   * Compile regex patterns from configuration
+   * Compile built-in patterns plus any custom patterns from configuration.
+   * A custom pattern with the same name as a built-in one replaces it.
    */
-  private compilePatterns(customPatterns?: Record<string, any>): Map<string, RegExp> {
-    const patterns = new Map<string, RegExp>();
+  private compilePatterns(customPatterns?: Record<string, Partial<RegexPattern>>): Map<string, CompiledPattern> {
+    const patterns = new Map<string, CompiledPattern>();
 
-    // Add default patterns
-    for (const [key, patternConfig] of Object.entries(SECRET_REGEX_PATTERNS)) {
+    for (const [key, config] of Object.entries(SECRET_REGEX_PATTERNS)) {
       try {
-        const config = patternConfig as any;
-        patterns.set(key, new RegExp(config.pattern, 'gi'));
+        patterns.set(key, { regex: new RegExp(config.pattern, 'gi'), type: config.type, confidence: config.confidence });
       } catch (e) {
         console.warn(`Failed to compile pattern ${key}:`, e);
       }
     }
 
-    // Add custom patterns
     if (customPatterns) {
       for (const [key, config] of Object.entries(customPatterns)) {
+        if (!config.pattern) {
+          console.warn(`Skipping custom pattern ${key}: no pattern given`);
+          continue;
+        }
         try {
-          const patternObj = config as RegexPattern;
-          patterns.set(key, new RegExp(patternObj.pattern, 'gi'));
+          patterns.set(key, {
+            regex: new RegExp(config.pattern, 'gi'),
+            type: config.type ?? DEFAULT_CUSTOM_PATTERN_TYPE,
+            confidence: clampConfidence(config.confidence),
+          });
         } catch (e) {
           console.warn(`Failed to compile custom pattern ${key}:`, e);
         }
@@ -50,6 +71,22 @@ export class Sanitizer {
     }
 
     return patterns;
+  }
+
+  /**
+   * Yields every non-empty match. Empty matches are skipped and the search moves on,
+   * so a pattern that can match an empty string cannot loop forever.
+   */
+  private *matches(regex: RegExp, text: string): Generator<RegExpExecArray> {
+    regex.lastIndex = 0;
+    let match: RegExpExecArray | null;
+    while ((match = regex.exec(text)) !== null) {
+      if (match[0].length === 0) {
+        regex.lastIndex++;
+        continue;
+      }
+      yield match;
+    }
   }
 
   /**
@@ -72,8 +109,8 @@ export class Sanitizer {
 
     // Apply all regex patterns in order of confidence (high to low)
     const sortedPatterns = this.getSortedPatterns();
-    for (const [key, regex] of sortedPatterns) {
-      sanitizedText = this.applyPattern(sanitizedText, regex, key);
+    for (const [key, compiled] of sortedPatterns) {
+      sanitizedText = this.applyPattern(sanitizedText, compiled, key);
     }
 
     return {
@@ -87,32 +124,22 @@ export class Sanitizer {
   /**
    * Apply a single regex pattern to text
    */
-  private applyPattern(text: string, regex: RegExp, patternName: string): string {
-    const patternConfig = SECRET_REGEX_PATTERNS[patternName as keyof typeof SECRET_REGEX_PATTERNS];
-    if (!patternConfig) return text;
-
+  private applyPattern(text: string, compiled: CompiledPattern, patternName: string): string {
     let result = text;
-    let match;
 
-    // Reset lastIndex for global regex
-    regex.lastIndex = 0;
-
-    while ((match = regex.exec(text)) !== null) {
+    for (const match of this.matches(compiled.regex, text)) {
       const matched = match[0];
-      const location = match.index;
-      const replacement = `[REDACTED_${patternConfig.type}]`;
+      const replacement = `[REDACTED_${compiled.type}]`;
 
-      // Record scrubbed item
       this.scrubHistory.push({
-        type: patternConfig.type,
+        type: compiled.type,
         pattern: patternName,
-        location,
+        location: match.index,
         length: matched.length,
-        confidence: patternConfig.confidence,
+        confidence: compiled.confidence,
         replacement
       });
 
-      // Replace in result
       result = result.replace(matched, replacement);
     }
 
@@ -122,15 +149,8 @@ export class Sanitizer {
   /**
    * Get patterns sorted by confidence (high to low)
    */
-  private getSortedPatterns(): Array<[string, RegExp]> {
-    const entries = Array.from(this.regexPatterns.entries());
-    return entries.sort((a, b) => {
-      const configA = SECRET_REGEX_PATTERNS[a[0] as keyof typeof SECRET_REGEX_PATTERNS];
-      const configB = SECRET_REGEX_PATTERNS[b[0] as keyof typeof SECRET_REGEX_PATTERNS];
-      const confA = configA?.confidence ?? 0;
-      const confB = configB?.confidence ?? 0;
-      return confB - confA; // Descending order
-    });
+  private getSortedPatterns(): Array<[string, CompiledPattern]> {
+    return Array.from(this.regexPatterns.entries()).sort((a, b) => b[1].confidence - a[1].confidence);
   }
 
   /**
@@ -178,11 +198,20 @@ export class Sanitizer {
   }
 
   /**
-   * Add a custom pattern
+   * Add a custom pattern. It is used by sanitize(), detectSecrets() and hasSecrets().
+   * A pattern with the same name as an existing one replaces it.
    */
-  public addPattern(name: string, pattern: string, _type?: SecretType, _confidence?: number): void {
+  public addPattern(
+    name: string,
+    pattern: string,
+    type: SecretType = DEFAULT_CUSTOM_PATTERN_TYPE,
+    confidence: number = DEFAULT_CUSTOM_PATTERN_CONFIDENCE
+  ): void {
+    if (!pattern) {
+      throw new Error('Invalid regex pattern: pattern is empty');
+    }
     try {
-      this.regexPatterns.set(name, new RegExp(pattern, 'gi'));
+      this.regexPatterns.set(name, { regex: new RegExp(pattern, 'gi'), type, confidence: clampConfidence(confidence) });
     } catch (e) {
       throw new Error(`Invalid regex pattern: ${e}`);
     }
@@ -199,9 +228,8 @@ export class Sanitizer {
    * Check if text contains any secrets (without full sanitization)
    */
   public hasSecrets(text: string): boolean {
-    for (const [, regex] of this.regexPatterns) {
-      regex.lastIndex = 0;
-      if (regex.test(text)) {
+    for (const [, compiled] of this.regexPatterns) {
+      if (!this.matches(compiled.regex, text).next().done) {
         return true;
       }
     }
@@ -213,23 +241,16 @@ export class Sanitizer {
    */
   public detectSecrets(text: string): ScrubbedItem[] {
     const detected: ScrubbedItem[] = [];
-    const sortedPatterns = this.getSortedPatterns();
 
-    for (const [key, regex] of sortedPatterns) {
-      const patternConfig = SECRET_REGEX_PATTERNS[key as keyof typeof SECRET_REGEX_PATTERNS];
-      if (!patternConfig) continue;
-
-      regex.lastIndex = 0;
-      let match;
-
-      while ((match = regex.exec(text)) !== null) {
+    for (const [key, compiled] of this.getSortedPatterns()) {
+      for (const match of this.matches(compiled.regex, text)) {
         detected.push({
-          type: patternConfig.type,
+          type: compiled.type,
           pattern: key,
           location: match.index,
           length: match[0].length,
-          confidence: patternConfig.confidence,
-          replacement: `[REDACTED_${patternConfig.type}]`
+          confidence: compiled.confidence,
+          replacement: `[REDACTED_${compiled.type}]`
         });
       }
     }

@@ -27,7 +27,7 @@ Everything MaxiMinion adds is labelled with its name:
 | Status bar | A shield with `~N tokens`; hover it for details |
 | Notifications | Messages start with **MaxiMinion:** |
 | Problems panel | Secret warnings have the source **MaxiMinion** |
-| Output panel | The **MaxiMinion** channel holds Refiner reports |
+| Output panel | The **MaxiMinion** channel holds Refiner reports; **MaxiMinion Activity** lists what was copied or sent |
 | Settings | Search `maximinion`; settings are grouped into three sections, each with an explanation |
 
 ## Which command should I use?
@@ -45,6 +45,17 @@ Everything MaxiMinion adds is labelled with its name:
 Copies the current selection, the active file, or the files selected in the Explorer as labelled Markdown code blocks, after redacting secrets and compacting whitespace (indentation is kept). A notification reports how many values were redacted and the estimated tokens before and after, and warns when the copy exceeds your token budget.
 
 The **token counter** in the status bar shows the estimate for the active file or selection, turns amber when over budget, and runs Copy for AI when clicked.
+
+Copy for AI and Copy Sanitized File ask before copying:
+
+- **Files that usually hold credentials**, such as `.env`, private keys, `.npmrc`, or Terraform state. If you copy them anyway, likely secrets are still redacted. Templates such as `.env.example` are not flagged.
+- **Hidden Unicode**: bidirectional controls, invisible tag characters, and zero-width characters can hide text or instructions from you that an AI model still reads ("Trojan Source" and prompt injection). Choose **Show** to jump to the first one. MaxiMinion never removes them silently.
+
+## Activity log
+
+**MaxiMinion: Show Activity Log** (also in the sidebar title bar) opens the **MaxiMinion Activity** channel. Each copy to the clipboard, request to your local Ollama model, local preview, and declined copy is listed with file paths, the number of values redacted, whether redaction was on, and estimated tokens. File content is never logged, and nothing leaves your machine.
+
+See the [Security Model](https://github.com/dev-rb-hub/maximinion-ce/blob/main/docs/SECURITY_MODEL.md) for how MaxiMinion protects your code and its known limits.
 
 ## Inline secret warnings
 
@@ -74,6 +85,7 @@ All commands are in the Command Palette under **MaxiMinion:**.
 - `Run Refiner on Active File (Signal Report)`: see [The Refiner](#the-refiner).
 - `Open Settings`: opens the MaxiMinion settings.
 - `Test Semantic Folding Setup (Ollama)`: checks that Ollama is reachable and the folding model is installed, then times a sample fold.
+- `Show Activity Log`: see [Activity log](#activity-log).
 - `Get Started & Help`: opens the walkthrough.
 
 ## Settings

@@ -328,10 +328,11 @@ maximinion.ai/
 ├── PHASE_2.md                   # The Librarian
 ├── PHASE_3.md                   # Manifest Generator
 ├── PHASE_4.md                   # Proxy Transport
+├── SECURITY_MODEL.md            # Threat model & layered security controls
 ├── GUIDES/
 │   ├── local-setup.md          # Development environment setup
 │   ├── deployment.md           # Deployment & hosting options
-│   ├── security.md             # Security best practices
+│   ├── security.md             # Data handling & safe use
 │   └── troubleshooting.md      # Common issues & fixes
 ├── API/
 │   ├── refiner-api.md          # Phase 1 API reference

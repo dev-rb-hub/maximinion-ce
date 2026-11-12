@@ -34,10 +34,11 @@ export function formatTokens(count: number): string {
 export function compactWhitespace(text: string, language: string): string {
   let result = text.replace(/\r\n/g, '\n');
   if (language !== 'markdown') {
-    result = result.replace(/[ \t]+$/gm, '');
+    // The lookbehind starts each match at the beginning of a whitespace run, keeping this linear.
+    result = result.replace(/(?<![ \t])[ \t]+$/gm, '');
   }
   // Leading indentation is preserved so partial selections of indented code stay valid.
-  return result.replace(/\n{3,}/g, '\n\n').replace(/^(?:[ \t]*\n)+/, '').replace(/\s+$/, '');
+  return result.replace(/\n{3,}/g, '\n\n').replace(/^(?:[ \t]*\n)+/, '').trimEnd();
 }
 
 function fenceFor(text: string): string {

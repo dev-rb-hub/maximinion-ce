@@ -64,3 +64,49 @@ describe('extension manifest', () => {
     );
   });
 });
+
+describe('forbidden APIs (see docs/SECURITY_MODEL.md)', () => {
+  const srcRoot = path.join(root, 'src');
+  const files = (function walk(dir: string): string[] {
+    return fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+      const full = path.join(dir, entry.name);
+      return entry.isDirectory() ? walk(full) : full.endsWith('.ts') ? [full] : [];
+    });
+  })(srcRoot);
+  const usersOf = (pattern: RegExp) =>
+    files
+      .filter((file) => pattern.test(fs.readFileSync(file, 'utf8')))
+      .map((file) => path.relative(srcRoot, file).replace(/\\/g, '/'))
+      .sort();
+
+  test.each([
+    ['child processes', /\bchild_process\b/],
+    ['eval', /\beval\s*\(/],
+    ['new Function', /\bnew\s+Function\s*\(/],
+    ['direct network requests', /\bfetch\s*\(|\bXMLHttpRequest\b|\bWebSocket\b/],
+    ['raw network modules', /['"](?:node:)?(?:http|https|net|tls|dgram|http2)['"]/],
+  ])('source never uses %s', (_name, pattern) => {
+    expect(usersOf(pattern)).toEqual([]);
+  });
+
+  test('the clipboard is only written through the egress module', () => {
+    expect(usersOf(/clipboard\.writeText/)).toEqual(['guard/egress.ts']);
+  });
+
+  test('every Refiner (the only network client) is created by the egress module', () => {
+    expect(usersOf(/new\s+Refiner\s*\(/)).toEqual(['guard/egress.ts']);
+  });
+
+  test('Node file system access is limited to the guarded workspace reader', () => {
+    expect(usersOf(/from\s+['"](?:node:)?fs(?:\/promises)?['"]|require\(\s*['"](?:node:)?fs/)).toEqual([
+      'guard/workspace-reader.ts',
+    ]);
+  });
+
+  test('the Ollama endpoint is a loopback constant, not a setting', () => {
+    const egress = fs.readFileSync(path.join(srcRoot, 'guard', 'egress.ts'), 'utf8');
+    expect(egress).toMatch(/export const OLLAMA_ENDPOINT = 'http:\/\/localhost:11434';/);
+    const properties = Object.assign({}, ...contributes.configuration.map((c: { properties: object }) => c.properties));
+    expect(Object.keys(properties).filter((key) => /endpoint|url|host/i.test(key))).toEqual([]);
+  });
+});

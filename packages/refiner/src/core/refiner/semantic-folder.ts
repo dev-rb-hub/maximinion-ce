@@ -210,6 +210,8 @@ Summary (1-2 lines):`;
     try {
       const response = await fetch(url, {
         ...options,
+        // Never follow redirects: code sent for folding must only reach the configured endpoint.
+        redirect: 'error',
         headers: {
           'Content-Type': 'application/json',
           ...options.headers

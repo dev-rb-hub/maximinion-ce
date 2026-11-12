@@ -3,7 +3,7 @@
 MaxiMinion.AI - the operational research engine for Context Window Management and Token Economics
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Tests: 162/162 Passing](https://img.shields.io/badge/Tests-162%2F162-brightgreen.svg)](#)
+[![Tests: 244/244 Passing](https://img.shields.io/badge/Tests-244%2F244-brightgreen.svg)](#)
 [![Engine: Operations Research](https://img.shields.io/badge/Engine-Operations%20Research-blue.svg)](#)
 [![Focus: Signal-to-Noise Ratio](https://img.shields.io/badge/Focus-SNR%20Optimization-green.svg)](#)
 [![Node.js: 18+](https://img.shields.io/badge/Node.js-18%2B-darkgreen.svg)](#)
@@ -42,7 +42,7 @@ We transform your codebase into **high-density semantic payloads** via four prec
 - Compress via semantic folding (Ollama LLM integration)
 - **Goal:** fewer tokens spent on boilerplate and no secrets in prompts (semantic folding is optional and lossy; review output before sharing)
 
-📖 [Learn More →](docs/PHASE_1.md) | 🧪 Tests: 37/37 ✅
+📖 [Learn More →](docs/PHASE_1.md) | 🧪 Tests: 67/67 ✅
 
 ### Phase 2️⃣ : The Librarian 📚
 **Dependency Graph Analysis & Importance Scoring**
@@ -77,7 +77,7 @@ We transform your codebase into **high-density semantic payloads** via four prec
 ## 📊 Verified Results
 
 **Current Workspace Status:**
-- ✅ 162/162 unit tests passing across five workspaces
+- ✅ 244/244 unit tests passing across five workspaces
 - ✅ 548 packages audited, 0 known vulnerabilities
 - ✅ TypeScript strict mode, full type coverage
 - ✅ Comprehensive documentation with 12+ Mermaid diagrams
@@ -174,7 +174,8 @@ See the [API reference](docs/API/) and [examples](docs/EXAMPLES/) for manifest g
 **Guides & Tutorials:**
 - 🛠️ [docs/GUIDES/local-setup.md](docs/GUIDES/local-setup.md) - Development environment setup
 - 🚀 [docs/GUIDES/deployment.md](docs/GUIDES/deployment.md) - Deployment & hosting options
-- 🔒 [docs/GUIDES/security.md](docs/GUIDES/security.md) - Security best practices & compliance
+- 🔒 [docs/GUIDES/security.md](docs/GUIDES/security.md) - Data handling, secret detection, and safe use
+- 🛡️ [docs/SECURITY_MODEL.md](docs/SECURITY_MODEL.md) - Threat model, trust boundaries, layered controls, known gaps
 - 🐛 [docs/GUIDES/troubleshooting.md](docs/GUIDES/troubleshooting.md) - Common issues & fixes
 
 **API Reference:**
@@ -249,7 +250,7 @@ See the [API reference](docs/API/) and [examples](docs/EXAMPLES/) for manifest g
 - **Licensing:** MIT (Community) + Commercial dual-license (Enterprise features)
 - **Compliance:** Community Edition makes no compliance certification claims; compliance support is planned for commercial editions
 
-📖 [Security Details →](ARCHITECTURE.md#security-architecture)
+📖 [Security Model →](docs/SECURITY_MODEL.md) (threat model, layered controls, known gaps) | [Security Guide →](docs/GUIDES/security.md)
 
 ---
 
@@ -321,7 +322,7 @@ npm run build  # Compile all packages
 
 | Metric | Value |
 |--------|-------|
-| Tests Passing | 162/162 ✅ |
+| Tests Passing | 244/244 ✅ |
 | Type Coverage | 100% (strict mode) |
 | Packages | 4 core libraries + VS Code extension |
 | Lines of Code | ~8,000 |

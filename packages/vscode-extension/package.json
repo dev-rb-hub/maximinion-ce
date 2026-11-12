@@ -71,6 +71,12 @@
         "title": "Test Semantic Folding Setup (Ollama)",
         "category": "MaxiMinion",
         "icon": "$(beaker)"
+      },
+      {
+        "command": "maximinion.showActivityLog",
+        "title": "Show Activity Log",
+        "category": "MaxiMinion",
+        "icon": "$(history)"
       }
     ],
     "submenus": [
@@ -104,6 +110,10 @@
         {
           "command": "maximinion.runRefinerOnActiveFile",
           "group": "2_preview@2"
+        },
+        {
+          "command": "maximinion.showActivityLog",
+          "group": "9_help@2"
         },
         {
           "command": "maximinion.showHelp",
@@ -150,6 +160,11 @@
           "command": "maximinion.openSettings",
           "when": "view == maximinion.sidebar",
           "group": "navigation@2"
+        },
+        {
+          "command": "maximinion.showActivityLog",
+          "when": "view == maximinion.sidebar",
+          "group": "navigation@3"
         }
       ]
     },

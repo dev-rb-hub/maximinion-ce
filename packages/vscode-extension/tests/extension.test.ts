@@ -100,8 +100,10 @@ const mockVscode = {
     createStatusBarItem: jest.fn(() => statusBarItem),
     onDidChangeActiveTextEditor: jest.fn(disposable),
     onDidChangeTextEditorSelection: jest.fn(disposable),
-    createOutputChannel: jest.fn(() => ({
+    createOutputChannel: jest.fn((name: string) => ({
+      name,
       appendLine: jest.fn(),
+      info: jest.fn(),
       show: jest.fn(),
       dispose: jest.fn(),
     })),
@@ -130,6 +132,14 @@ const mockVscode = {
 };
 
 jest.mock('vscode', () => mockVscode, { virtual: true });
+
+function activityLines(): string[] {
+  const channel = (mockVscode.window.createOutputChannel.mock.results as Array<{ value: any }>)
+    .map((result) => result.value)
+    .filter((value) => value.name === 'MaxiMinion Activity')
+    .pop();
+  return channel ? (channel.info.mock.calls as string[][]).map((call) => call[0]) : [];
+}
 
 describe('MaxiMinion VS Code commands', () => {
   const sourceText = 'const apiKey = "sk-proj-abcdef1234567890abcdef1234567890";';
@@ -494,6 +504,105 @@ describe('MaxiMinion VS Code commands', () => {
     });
   });
 
+  describe('security guardrails', () => {
+    const secret = 'sk-proj-abcdef1234567890abcdef1234567890';
+
+    test('Copy for AI logs paths and counts, never content', async () => {
+      await commandHandlers.get('maximinion.copyForAI')!();
+
+      const [line, ...rest] = activityLines();
+      expect(rest).toEqual([]);
+      expect(line).toMatch(/^Copied to clipboard \(Copy for AI\): 1 source\(s\) \[test\.ts\], 1 redacted, secret redaction on, ~\d+ tokens$/);
+      expect(line).not.toContain(secret);
+      expect(line).not.toContain('apiKey');
+    });
+
+    test('asks before copying a credentials file and copies nothing if cancelled', async () => {
+      mockVscode.window.activeTextEditor = { document: makeDocument(`OPENAI_KEY=${secret}\n`, '.env', 'dotenv') };
+
+      await commandHandlers.get('maximinion.copyForAI')!();
+
+      expect(mockVscode.window.showWarningMessage).toHaveBeenCalledWith(
+        expect.stringContaining('.env (environment file) usually holds credentials'),
+        { modal: true },
+        'Copy Anyway',
+      );
+      expect(mockVscode.env.clipboard.writeText).not.toHaveBeenCalled();
+      expect(activityLines()).toEqual(['Not copied (Copy for AI): [.env], looks like a credentials file']);
+    });
+
+    test('copies a credentials file, still redacted, only when the user confirms', async () => {
+      mockVscode.window.activeTextEditor = { document: makeDocument(`OPENAI_KEY=${secret}\n`, '.env', 'dotenv') };
+      mockVscode.window.showWarningMessage.mockResolvedValueOnce('Copy Anyway');
+
+      await commandHandlers.get('maximinion.copyForAI')!();
+
+      const copied = mockVscode.env.clipboard.writeText.mock.calls[0][0] as string;
+      expect(copied).toContain('### .env');
+      expect(copied).not.toContain(secret);
+    });
+
+    test('can skip credentials files in an Explorer selection and copy the rest', async () => {
+      const code = makeDocument('export const a = 1;', 'src/a.ts');
+      const env = makeDocument('PASSWORD=hunter2hunter2', 'config/.env.local', 'dotenv');
+      const template = makeDocument('PASSWORD=', '.env.example', 'dotenv');
+      mockVscode.workspace.fs.stat.mockResolvedValue({ type: mockVscode.FileType.File });
+      mockVscode.workspace.openTextDocument.mockImplementation(async (uri: unknown) =>
+        [code, env, template].find((doc) => doc.uri === uri),
+      );
+      mockVscode.window.showWarningMessage.mockResolvedValueOnce('Skip These Files');
+
+      await commandHandlers.get('maximinion.copyForAI')!(code.uri, [code.uri, env.uri, template.uri]);
+
+      const copied = mockVscode.env.clipboard.writeText.mock.calls[0][0] as string;
+      expect(copied).toContain('### src/a.ts');
+      expect(copied).toContain('### .env.example');
+      expect(copied).not.toContain('config/.env.local');
+      expect(activityLines()[0]).toBe('Not copied (Copy for AI): [config/.env.local], looks like a credentials file');
+    });
+
+    test('asks before copying hidden Unicode and never strips it', async () => {
+      const trojan = 'const isAdmin = false; /*\u202E } if (isAdmin) \u2066*/';
+      mockVscode.window.activeTextEditor = { document: makeDocument(trojan) };
+
+      await commandHandlers.get('maximinion.copyForAI')!();
+      expect(mockVscode.window.showWarningMessage).toHaveBeenCalledWith(
+        expect.stringContaining('Hidden Unicode found (test.ts: 2 bidirectional control(s))'),
+        { modal: true },
+        'Copy Anyway',
+        'Show',
+      );
+      expect(mockVscode.env.clipboard.writeText).not.toHaveBeenCalled();
+
+      mockVscode.window.showWarningMessage.mockResolvedValueOnce('Copy Anyway');
+      await commandHandlers.get('maximinion.copyForAI')!();
+      expect(mockVscode.env.clipboard.writeText.mock.calls[0][0]).toContain('\u202E');
+      expect(activityLines().pop()).toMatch(/, 2 hidden Unicode character\(s\)$/);
+    });
+
+    test('Copy Sanitized File uses the same checks and activity log', async () => {
+      mockVscode.window.activeTextEditor = { document: makeDocument(`key: ${secret}`, 'deploy/server.pem') };
+
+      await commandHandlers.get('maximinion.copySanitizedActiveFile')!();
+      expect(mockVscode.env.clipboard.writeText).not.toHaveBeenCalled();
+
+      mockVscode.window.showWarningMessage.mockResolvedValueOnce('Copy Anyway');
+      await commandHandlers.get('maximinion.copySanitizedActiveFile')!();
+      expect(mockVscode.env.clipboard.writeText).toHaveBeenCalledWith(expect.not.stringContaining(secret));
+      expect(activityLines().pop()).toMatch(/^Copied to clipboard \(Copy Sanitized File\): 1 source\(s\) \[deploy\/server\.pem\]/);
+    });
+
+    test('Show Activity Log opens the activity channel', () => {
+      commandHandlers.get('maximinion.showActivityLog')!();
+
+      const channel = (mockVscode.window.createOutputChannel.mock.results as Array<{ value: any }>)
+        .map((result) => result.value)
+        .find((value) => value.name === 'MaxiMinion Activity');
+      expect(mockVscode.window.createOutputChannel).toHaveBeenCalledWith('MaxiMinion Activity', { log: true });
+      expect(channel.show).toHaveBeenCalled();
+    });
+  });
+
   describe('semantic folding', () => {
     const realFetch = global.fetch;
     let generateCalls: number;
@@ -538,6 +647,23 @@ describe('MaxiMinion VS Code commands', () => {
         language: 'typescript',
       });
       expect(outputLines()).toContainEqual(expect.stringContaining('Semantic folding: applied with gemma4:26b'));
+    });
+
+    test('only contacts the fixed local endpoint, refuses redirects, and logs what was sent', async () => {
+      configValues['semanticFolding.model'] = 'gemma4:26b';
+      mockOllama({ models: ['gemma4:26b'], summary: 'Adds numbers.' });
+
+      await commandHandlers.get('maximinion.runRefinerOnActiveFile')!();
+
+      const calls = (global.fetch as jest.Mock).mock.calls as Array<[string, RequestInit | undefined]>;
+      expect(calls.length).toBeGreaterThan(0);
+      for (const [url, init] of calls) {
+        expect(String(url)).toMatch(/^http:\/\/localhost:11434\//);
+        expect(init?.redirect).toBe('error');
+      }
+      expect(activityLines()).toContainEqual(
+        expect.stringMatching(/^Sent to local model gemma4:26b at http:\/\/localhost:11434: test\.ts, ~\d+ tokens, secret redaction on$/),
+      );
     });
 
     test('explains a missing model, lists installed ones, and offers to switch', async () => {

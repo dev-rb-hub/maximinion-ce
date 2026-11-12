@@ -1,5 +1,9 @@
 import { Sanitizer, Refiner, EntropyScore, sameOllamaModel } from '@maximinion/refiner';
 import * as vscode from 'vscode';
+import { ActivityLog } from './guard/activity-log';
+import { copyToClipboard, createRefiner, OLLAMA_ENDPOINT } from './guard/egress';
+import { describeHiddenUnicode, findHiddenUnicode } from './guard/hidden-unicode';
+import { sensitiveReason } from './guard/sensitive-paths';
 import { buildAiPayload, estimateTokens, formatTokens, PayloadSource } from './payload';
 import { findSecretRanges, PII_TYPES } from './secret-ranges';
 import { userSetting } from './settings';
@@ -21,6 +25,9 @@ function getConfig(): vscode.WorkspaceConfiguration {
   return vscode.workspace.getConfiguration('maximinion');
 }
 
+// Created in activate(); records what was read and sent (paths and counts only).
+let activityLog: ActivityLog;
+
 // Every notification is prefixed so users can tell which extension raised it.
 function info(message: string, ...actions: string[]): Thenable<string | undefined> {
   return vscode.window.showInformationMessage(`MaxiMinion: ${message}`, ...actions);
@@ -40,36 +47,45 @@ function showHelp(step?: string): void {
   ).catch(() => vscode.env.openExternal(vscode.Uri.parse(HELP_URL)));
 }
 
-function sanitizeActiveDocument(): { text: string; count: number; language: string } | undefined {
+interface SanitizedDocument {
+  text: string;
+  count: number;
+  language: string;
+  scrubbing: boolean;
+  source: CollectedSource;
+}
+
+function sanitizeActiveDocument(): SanitizedDocument | undefined {
   const editor = vscode.window.activeTextEditor;
   if (!editor) {
     void warn('Open a text document before sanitizing.');
     return undefined;
   }
 
-  const scrubbingEnabled = userSetting(getConfig(), 'secretScrubbing.enabled', true);
-
-  if (!scrubbingEnabled) {
-    return { text: editor.document.getText(), count: 0, language: editor.document.languageId };
+  const { document } = editor;
+  const source = sourceFor(document);
+  const scrubbing = userSetting(getConfig(), 'secretScrubbing.enabled', true);
+  if (!scrubbing) {
+    return { text: source.text, count: 0, language: document.languageId, scrubbing, source };
   }
 
-  const result = new Sanitizer().sanitize(editor.document.getText());
-  return {
-    text: result.text,
-    count: result.scrubbed.length,
-    language: editor.document.languageId,
-  };
+  const result = new Sanitizer().sanitize(source.text);
+  return { text: result.text, count: result.scrubbed.length, language: document.languageId, scrubbing, source };
 }
 
-async function showSanitizedPreview(
-  result: { text: string; count: number; language: string },
-  message: string,
-): Promise<void> {
+async function showSanitizedPreview(result: SanitizedDocument, message: string): Promise<void> {
   const preview = await vscode.workspace.openTextDocument({
     content: result.text,
     language: result.language,
   });
   await vscode.window.showTextDocument(preview, { preview: true });
+  activityLog.record({
+    kind: 'preview',
+    command: 'Preview Sanitized File',
+    source: result.source.relativePath,
+    redacted: result.count,
+    scrubbing: result.scrubbing,
+  });
   void info(message);
 }
 
@@ -128,7 +144,7 @@ function createRunRefinerOnActiveDocument(
         `manifestExportFormat=${exportFormat}`,
     );
 
-    const refiner = new Refiner({ enableSemanticFolding: semanticFoldingEnabled, ollamaModel: foldingModel });
+    const refiner = createRefiner({ enableSemanticFolding: semanticFoldingEnabled, ollamaModel: foldingModel });
     let currentText = originalText;
     let scrubbedCount = 0;
 
@@ -161,7 +177,10 @@ function createRunRefinerOnActiveDocument(
     } else if (!entropy) {
       output.appendLine('Semantic folding: skipped (requires entropy scoring to be enabled)');
     } else {
-      const folded = await runSemanticFolding(refiner, currentText, foldingModel, output);
+      const folded = await runSemanticFolding(refiner, currentText, foldingModel, output, {
+        source: labelFor(editor.document),
+        scrubbing: secretScrubbingEnabled,
+      });
       if (folded) {
         foldedApplied = true;
         foldedTokensSaved = folded.tokensSaved;
@@ -193,6 +212,13 @@ function createRunRefinerOnActiveDocument(
       language: editor.document.languageId,
     });
     await vscode.window.showTextDocument(preview, { preview: true });
+    activityLog.record({
+      kind: 'preview',
+      command: 'Run Refiner',
+      source: labelFor(editor.document),
+      redacted: scrubbedCount,
+      scrubbing: secretScrubbingEnabled,
+    });
     output.show(true);
     const signal = entropy ? `signal ${entropy.rating}, ` : '';
     const sizeChange =
@@ -214,7 +240,6 @@ function createRunRefinerOnActiveDocument(
   };
 }
 
-const OLLAMA_URL = 'http://localhost:11434';
 const SAMPLE_CODE = 'function add(a: number, b: number): number {\n  return a + b;\n}\n';
 
 type FoldingCheck =
@@ -241,14 +266,14 @@ function foldingModel(): string {
 async function checkFoldingSetup(model: string): Promise<FoldingCheck> {
   let installed: string[];
   try {
-    installed = (await new Refiner({ ollamaModel: model }).listOllamaModels()).map((m) => m.name);
+    installed = (await createRefiner({ ollamaModel: model }).listOllamaModels()).map((m) => m.name);
   } catch {
     return {
       ok: false,
       reason: 'unreachable',
       model,
       installed: [],
-      message: `Ollama is not running at ${OLLAMA_URL}.`,
+      message: `Ollama is not running at ${OLLAMA_ENDPOINT}.`,
     };
   }
   if (!installed.some((name) => sameOllamaModel(name, model))) {
@@ -360,7 +385,14 @@ async function testSemanticFolding(): Promise<void> {
       const controller = new AbortController();
       token.onCancellationRequested(() => controller.abort());
       const started = Date.now();
-      const folded = await new Refiner({ ollamaModel: model, cacheFoldedSummaries: false }).fold(
+      activityLog.record({
+        kind: 'local-model',
+        endpoint: OLLAMA_ENDPOINT,
+        model,
+        source: 'built-in sample function (no workspace code)',
+        tokens: estimateTokens(SAMPLE_CODE),
+      });
+      const folded = await createRefiner({ ollamaModel: model, cacheFoldedSummaries: false }).fold(
         SAMPLE_CODE,
         controller.signal,
       );
@@ -405,6 +437,7 @@ async function runSemanticFolding(
   text: string,
   model: string,
   output: vscode.OutputChannel,
+  origin: { source: string; scrubbing: boolean },
 ): Promise<{ summary: string; tokensSaved: number } | undefined> {
   const check = await checkFoldingSetup(model);
   if (!check.ok) {
@@ -420,6 +453,14 @@ async function runSemanticFolding(
   }
 
   const controller = new AbortController();
+  activityLog.record({
+    kind: 'local-model',
+    endpoint: OLLAMA_ENDPOINT,
+    model,
+    source: origin.source,
+    tokens: estimateTokens(text),
+    scrubbing: origin.scrubbing,
+  });
   const folded = await vscode.window.withProgress(
     {
       location: vscode.ProgressLocation.Notification,
@@ -464,10 +505,30 @@ function labelFor(document: vscode.TextDocument): string {
   return document.uri.scheme === 'file' ? vscode.workspace.asRelativePath(document.uri, false) : document.fileName;
 }
 
+interface CollectedSource extends PayloadSource {
+  uri: vscode.Uri;
+  /** Path used for credential-file checks and the activity log. */
+  relativePath: string;
+}
+
+function sourceFor(document: vscode.TextDocument, selection?: vscode.Selection): CollectedSource {
+  const relativePath = labelFor(document);
+  if (selection && !selection.isEmpty) {
+    return {
+      uri: document.uri,
+      relativePath,
+      label: `${relativePath} (lines ${selection.start.line + 1}-${selection.end.line + 1})`,
+      language: document.languageId,
+      text: document.getText(selection),
+    };
+  }
+  return { uri: document.uri, relativePath, label: relativePath, language: document.languageId, text: document.getText() };
+}
+
 async function collectPayloadSources(
   uri?: vscode.Uri,
   uris?: vscode.Uri[],
-): Promise<PayloadSource[] | undefined> {
+): Promise<CollectedSource[] | undefined> {
   // Explorer menus pass the multi-selection array; editor menus and keybindings do not.
   const fromExplorer = Array.isArray(uris) && uris.length > 0;
   const targets = fromExplorer ? uris : uri ? [uri] : [];
@@ -483,26 +544,15 @@ async function collectPayloadSources(
       void warn('Open a file or select files in the Explorer before using Copy for AI.');
       return undefined;
     }
-    const { document, selection } = editor;
-    if (selection && !selection.isEmpty) {
-      return [
-        {
-          label: `${labelFor(document)} (lines ${selection.start.line + 1}-${selection.end.line + 1})`,
-          language: document.languageId,
-          text: document.getText(selection),
-        },
-      ];
-    }
-    return [{ label: labelFor(document), language: document.languageId, text: document.getText() }];
+    return [sourceFor(editor.document, editor.selection)];
   }
 
-  const sources: PayloadSource[] = [];
+  const sources: CollectedSource[] = [];
   for (const target of targets) {
     try {
       const stat = await vscode.workspace.fs.stat(target);
       if (stat.type & vscode.FileType.Directory) continue;
-      const document = await vscode.workspace.openTextDocument(target);
-      sources.push({ label: labelFor(document), language: document.languageId, text: document.getText() });
+      sources.push(sourceFor(await vscode.workspace.openTextDocument(target)));
     } catch {
       // Binary or unreadable files are skipped.
     }
@@ -510,13 +560,89 @@ async function collectPayloadSources(
   return sources;
 }
 
+/**
+ * Asks before copying files that usually hold credentials (for example `.env` or private keys).
+ * Returns the sources to copy, or undefined if the user cancels.
+ */
+async function confirmSensitiveSources(command: string, sources: CollectedSource[]): Promise<CollectedSource[] | undefined> {
+  const flagged = sources.flatMap((source) => {
+    const reason = sensitiveReason(source.relativePath);
+    return reason ? [{ source, reason }] : [];
+  });
+  if (flagged.length === 0) return sources;
+
+  const names = flagged.map(({ source, reason }) => `${source.relativePath} (${reason})`).join(', ');
+  const others = sources.filter((source) => !flagged.some((item) => item.source === source));
+  const choice = await vscode.window.showWarningMessage(
+    `MaxiMinion: ${names} usually ${flagged.length === 1 ? 'holds' : 'hold'} credentials. ` +
+      'Likely secrets are redacted, but detection is pattern-based. Copy anyway?',
+    { modal: true },
+    'Copy Anyway',
+    ...(others.length > 0 ? ['Skip These Files'] : []),
+  );
+  if (choice === 'Copy Anyway') return sources;
+
+  activityLog.record({
+    kind: 'declined',
+    command,
+    sources: flagged.map(({ source }) => source.relativePath),
+    reason: 'looks like a credentials file',
+  });
+  return choice === 'Skip These Files' ? others : undefined;
+}
+
+/**
+ * Hidden or bidirectional Unicode can hide instructions from a reader while an AI model still
+ * reads them. Text is never changed; the user decides whether to copy. Returns the number of
+ * hidden characters if the copy should go ahead, or undefined if the user cancels.
+ */
+async function confirmHiddenUnicode(command: string, sources: CollectedSource[]): Promise<number | undefined> {
+  const found = sources
+    .map((source) => ({ source, report: findHiddenUnicode(source.text) }))
+    .filter(({ report }) => report.total > 0);
+  const total = found.reduce((sum, { report }) => sum + report.total, 0);
+  if (total === 0) return 0;
+
+  const details = found.map(({ source, report }) => `${source.label}: ${describeHiddenUnicode(report)}`).join('; ');
+  const choice = await vscode.window.showWarningMessage(
+    `MaxiMinion: Hidden Unicode found (${details}). It can hide text or instructions from you that an AI model ` +
+      'still reads. Copy anyway?',
+    { modal: true },
+    'Copy Anyway',
+    'Show',
+  );
+  if (choice === 'Copy Anyway') return total;
+
+  activityLog.record({
+    kind: 'declined',
+    command,
+    sources: found.map(({ source }) => source.relativePath),
+    reason: `${total} hidden Unicode character(s)`,
+  });
+  if (choice === 'Show') {
+    const [{ source, report }] = found;
+    const document = await vscode.workspace.openTextDocument(source.uri);
+    const editor = vscode.window.activeTextEditor?.document === document ? vscode.window.activeTextEditor : undefined;
+    // A selection's offsets are relative to the selection start.
+    const base = editor && source.label !== source.relativePath ? document.offsetAt(editor.selection.start) : 0;
+    const position = document.positionAt(base + (report.firstOffset ?? 0));
+    await vscode.window.showTextDocument(document, { selection: new vscode.Range(position, position) });
+  }
+  return undefined;
+}
+
 async function copyForAI(uri?: vscode.Uri, uris?: vscode.Uri[]): Promise<void> {
-  const sources = await collectPayloadSources(uri, uris);
-  if (!sources) return;
-  if (sources.length === 0) {
+  const command = 'Copy for AI';
+  const collected = await collectPayloadSources(uri, uris);
+  if (!collected) return;
+  if (collected.length === 0) {
     void warn('No readable text files were selected for Copy for AI.');
     return;
   }
+  const sources = await confirmSensitiveSources(command, collected);
+  if (!sources || sources.length === 0) return;
+  const hiddenUnicode = await confirmHiddenUnicode(command, sources);
+  if (hiddenUnicode === undefined) return;
 
   const config = getConfig();
   const scrubSecrets = userSetting(config, 'secretScrubbing.enabled', true);
@@ -524,7 +650,15 @@ async function copyForAI(uri?: vscode.Uri, uris?: vscode.Uri[]): Promise<void> {
     scrubSecrets,
     compactWhitespace: config.get<boolean>('copyForAI.compactWhitespace', true),
   });
-  await vscode.env.clipboard.writeText(result.text);
+  await copyToClipboard(activityLog, result.text, {
+    kind: 'clipboard',
+    command,
+    sources: sources.map((source) => source.label),
+    redacted: result.redacted,
+    scrubbing: scrubSecrets,
+    tokens: result.payloadTokens,
+    hiddenUnicode,
+  });
 
   const redaction = scrubSecrets ? `${result.redacted} value(s) redacted` : 'secret scrubbing disabled';
   const summary =
@@ -817,11 +951,13 @@ class MaximinionSidebarProvider implements vscode.WebviewViewProvider {
 
 export function activate(context: vscode.ExtensionContext): void {
   const outputChannel = vscode.window.createOutputChannel('MaxiMinion');
+  activityLog = new ActivityLog();
   const statusBar = new TokenStatusBar();
   const diagnostics = new SecretDiagnostics();
 
   context.subscriptions.push(
     outputChannel,
+    activityLog,
     statusBar,
     diagnostics,
     vscode.languages.registerCodeActionsProvider({ scheme: 'file' }, diagnostics, {
@@ -858,13 +994,26 @@ export function activate(context: vscode.ExtensionContext): void {
       await showSanitizedPreview(result, `Sanitized preview ready. Redacted ${result.count} value(s).`);
     }),
     vscode.commands.registerCommand('maximinion.copySanitizedActiveFile', async () => {
+      const command = 'Copy Sanitized File';
       const result = sanitizeActiveDocument();
       if (!result) return;
+      if (!(await confirmSensitiveSources(command, [result.source]))) return;
+      const hiddenUnicode = await confirmHiddenUnicode(command, [result.source]);
+      if (hiddenUnicode === undefined) return;
 
-      await vscode.env.clipboard.writeText(result.text);
+      await copyToClipboard(activityLog, result.text, {
+        kind: 'clipboard',
+        command,
+        sources: [result.source.label],
+        redacted: result.count,
+        scrubbing: result.scrubbing,
+        tokens: estimateTokens(result.text),
+        hiddenUnicode,
+      });
       void info(`Copied sanitized text. Redacted ${result.count} value(s).`);
     }),
     vscode.commands.registerCommand('maximinion.runRefinerOnActiveFile', createRunRefinerOnActiveDocument(outputChannel)),
+    vscode.commands.registerCommand('maximinion.showActivityLog', () => activityLog.show()),
     vscode.commands.registerCommand('maximinion.openSettings', () => {
       void vscode.commands.executeCommand('workbench.action.openSettings', 'maximinion');
     }),
