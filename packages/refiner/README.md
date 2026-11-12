@@ -25,7 +25,7 @@ console.log(output.metadata.compressionRatio);
 - `refine(input)` — full pipeline: sanitize → split into blocks → entropy score each block → optionally fold. Returns `RefinedOutput` (`sanitizedText`, `blocks`, `metadata`).
 - `sanitize(text)` — secret/PII scrubbing only (synchronous).
 - `calculateEntropy(text)` — Shannon entropy score only (synchronous).
-- `fold(code)` — semantic folding of a single block via Ollama (requires `enableSemanticFolding: true` and Ollama running locally).
+- `fold(code)` — semantic folding of a single block via Ollama (requires `enableSemanticFolding: true` and Ollama running locally). Remote (cloud) models, and endpoints that are not on this machine, are refused unless you pass `allowRemoteModels: true`, because the code would leave the machine. If the model list cannot be read, or the configured model is not in it, nothing is sent.
 - `getStatistics()` — sanitizer and folding-cache stats.
 - CLI: `npx refiner` (see `src/cli.ts`).
 

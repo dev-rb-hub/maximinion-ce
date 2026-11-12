@@ -1,7 +1,15 @@
-import { Sanitizer, Refiner, EntropyScore, sameOllamaModel } from '@maximinion/refiner';
+import {
+  Sanitizer,
+  Refiner,
+  EntropyScore,
+  OllamaModelInfo,
+  sameOllamaModel,
+  isCloudModelName,
+  remoteModelRefusal,
+} from '@maximinion/refiner';
 import * as vscode from 'vscode';
 import { ActivityLog } from './guard/activity-log';
-import { copyToClipboard, createRefiner, OLLAMA_ENDPOINT } from './guard/egress';
+import { copyToClipboard, createRefiner, OLLAMA_ENDPOINT, remoteModelsAllowed } from './guard/egress';
 import { describeHiddenUnicode, findHiddenUnicode } from './guard/hidden-unicode';
 import { sensitiveReason } from './guard/sensitive-paths';
 import { getSecurityPosture, PostureInputs, PostureState, renderPostureMarkdown } from './guard/posture';
@@ -245,8 +253,15 @@ function createRunRefinerOnActiveDocument(
 const SAMPLE_CODE = 'function add(a: number, b: number): number {\n  return a + b;\n}\n';
 
 type FoldingCheck =
-  | { ok: true; model: string; installed: string[] }
-  | { ok: false; reason: 'unreachable' | 'model-missing'; model: string; installed: string[]; message: string };
+  | { ok: true; model: string; installed: string[]; remote?: { host?: string } }
+  | {
+      ok: false;
+      reason: 'unreachable' | 'model-missing' | 'remote-blocked';
+      model: string;
+      /** Models the user can switch to: local ones, plus remote ones if the user allowed them. */
+      installed: string[];
+      message: string;
+    };
 
 type FoldingStatus = { state: 'off' | 'checking' | 'ready' | 'not-ready'; detail: string };
 
@@ -264,11 +279,14 @@ function foldingModel(): string {
   return getConfig().get<string>('semanticFolding.model', 'phi3').trim() || 'phi3';
 }
 
-/** Basic setup check: Ollama is reachable and the model is installed. Does not run the model. */
+/** Remote (cloud) models among the installed ones, by name, from the last setup check. Used to label the model picker. */
+let remoteModelHosts = new Map<string, string | undefined>();
+
+/** Basic setup check: Ollama is reachable, the model is installed, and it is local unless remote models are allowed. Does not run the model. */
 async function checkFoldingSetup(model: string): Promise<FoldingCheck> {
-  let installed: string[];
+  let models: OllamaModelInfo[];
   try {
-    installed = (await createRefiner({ ollamaModel: model }).listOllamaModels()).map((m) => m.name);
+    models = await createRefiner({ ollamaModel: model }).listOllamaModels();
   } catch {
     return {
       ok: false,
@@ -278,7 +296,23 @@ async function checkFoldingSetup(model: string): Promise<FoldingCheck> {
       message: `Ollama is not running at ${OLLAMA_ENDPOINT}.`,
     };
   }
-  if (!installed.some((name) => sameOllamaModel(name, model))) {
+  const allowRemote = remoteModelsAllowed();
+  remoteModelHosts = new Map(models.filter((m) => m.remote).map((m) => [m.name, m.remoteHost]));
+  const installed = models.filter((m) => allowRemote || !m.remote).map((m) => m.name);
+  const match =
+    models.find((m) => sameOllamaModel(m.name, model)) ??
+    (isCloudModelName(model) ? { name: model, capabilities: [], remote: true } : undefined);
+
+  if (match?.remote && !allowRemote) {
+    return {
+      ok: false,
+      reason: 'remote-blocked',
+      model,
+      installed,
+      message: `${remoteModelRefusal(match)} Choose a local model, or allow remote models in your user settings.`,
+    };
+  }
+  if (!match) {
     const available = installed.length > 0 ? installed.join(', ') : 'none';
     return {
       ok: false,
@@ -288,7 +322,13 @@ async function checkFoldingSetup(model: string): Promise<FoldingCheck> {
       message: `Model "${model}" is not installed in Ollama (installed: ${available}).`,
     };
   }
-  return { ok: true, model, installed };
+  return { ok: true, model, installed, ...(match.remote ? { remote: { host: match.remoteHost } } : {}) };
+}
+
+function readyDetail(check: Extract<FoldingCheck, { ok: true }>, quoteModel = false): string {
+  const remote = check.remote ? ` It is a remote (cloud) model: code is sent to ${check.remote.host ?? 'another host'}.` : '';
+  const model = quoteModel ? `"${check.model}"` : check.model;
+  return `Ollama is running and ${model} is installed.${remote}`;
 }
 
 async function setFoldingModel(model: string): Promise<void> {
@@ -300,12 +340,14 @@ async function setFoldingModel(model: string): Promise<void> {
 
 /** Shows a failed check with the actions that fix it. */
 function offerFoldingFix(check: Extract<FoldingCheck, { ok: false }>, prefix: string): void {
+  const switchActions =
+    check.installed.length > 0 ? [`Use ${check.installed[0]}`, 'Choose Model'] : ['Browse Models'];
   const actions =
     check.reason === 'unreachable'
       ? ['Install Ollama', 'Test Again']
-      : check.installed.length > 0
-        ? [`Use ${check.installed[0]}`, 'Choose Model', 'Test Again']
-        : ['Browse Models', 'Test Again'];
+      : check.reason === 'remote-blocked'
+        ? [...switchActions, 'Remote Model Setting']
+        : [...switchActions, 'Test Again'];
 
   void warn(`${prefix} ${check.message}`, ...actions).then(async (choice) => {
     if (choice === 'Install Ollama') {
@@ -314,14 +356,24 @@ function offerFoldingFix(check: Extract<FoldingCheck, { ok: false }>, prefix: st
       void vscode.env.openExternal(vscode.Uri.parse('https://ollama.com/library'));
     } else if (choice === 'Test Again') {
       void vscode.commands.executeCommand('maximinion.testSemanticFolding');
+    } else if (choice === 'Remote Model Setting') {
+      void vscode.commands.executeCommand('workbench.action.openSettings', 'maximinion.semanticFolding.allowRemoteModels');
     } else if (choice === `Use ${check.installed[0]}`) {
       await setFoldingModel(check.installed[0]);
     } else if (choice === 'Choose Model') {
-      const picked = await vscode.window.showQuickPick(check.installed, {
-        title: 'MaxiMinion: choose an Ollama model for semantic folding',
-        placeHolder: 'Installed Ollama models',
-      });
-      if (picked) await setFoldingModel(picked);
+      const picked = await vscode.window.showQuickPick(
+        check.installed.map((name) => ({
+          label: name,
+          ...(remoteModelHosts.has(name)
+            ? { description: `remote: sends code to ${remoteModelHosts.get(name) ?? 'another host'}` }
+            : {}),
+        })),
+        {
+          title: 'MaxiMinion: choose an Ollama model for semantic folding',
+          placeHolder: 'Installed Ollama models',
+        },
+      );
+      if (picked) await setFoldingModel(picked.label);
     }
   });
 }
@@ -354,8 +406,8 @@ async function refreshFoldingStatus(enforce: boolean): Promise<void> {
   if (run !== foldingCheckRun) return;
 
   if (check.ok) {
-    setFoldingStatus({ state: 'ready', detail: `Ollama is running and ${model} is installed.` });
-    if (enforce) void info(`Semantic folding is ready: Ollama is running and "${model}" is installed.`);
+    setFoldingStatus({ state: 'ready', detail: readyDetail(check) });
+    if (enforce) void info(`Semantic folding is ready: ${readyDetail(check, true)}`);
     return;
   }
 
@@ -393,6 +445,7 @@ async function testSemanticFolding(): Promise<void> {
         model,
         source: 'built-in sample function (no workspace code)',
         tokens: estimateTokens(SAMPLE_CODE),
+        ...(check.remote ? { remote: check.remote } : {}),
       });
       const folded = await createRefiner({ ollamaModel: model, cacheFoldedSummaries: false }).fold(
         SAMPLE_CODE,
@@ -417,7 +470,7 @@ async function testSemanticFolding(): Promise<void> {
 
   const enabled = getConfig().get<boolean>('semanticFolding.enabled', false);
   if (enabled) {
-    setFoldingStatus({ state: 'ready', detail: `Ollama is running and ${model} is installed.` });
+    setFoldingStatus({ state: 'ready', detail: readyDetail(result.check) });
   }
   const seconds = ((result.ms ?? 0) / 1000).toFixed(1);
   void info(
@@ -447,7 +500,9 @@ async function runSemanticFolding(
     output.appendLine(
       check.reason === 'unreachable'
         ? '  -> Install Ollama from https://ollama.com and start it with `ollama serve`.'
-        : `  -> Run \`ollama pull ${model}\`, or set maximinion.semanticFolding.model to an installed model.`,
+        : check.reason === 'remote-blocked'
+          ? '  -> Choose a local model, or turn on maximinion.semanticFolding.allowRemoteModels in your user settings.'
+          : `  -> Run \`ollama pull ${model}\`, or set maximinion.semanticFolding.model to an installed model.`,
     );
     setFoldingStatus({ state: 'not-ready', detail: check.message });
     offerFoldingFix(check, 'Semantic folding skipped:');
@@ -462,6 +517,7 @@ async function runSemanticFolding(
     source: origin.source,
     tokens: estimateTokens(text),
     scrubbing: origin.scrubbing,
+    ...(check.remote ? { remote: check.remote } : {}),
   });
   const folded = await vscode.window.withProgress(
     {
@@ -851,6 +907,7 @@ function currentPostureInputs(): PostureInputs {
     diagnostics: userSetting(config, 'secretDiagnostics.enabled', true),
     minConfidence: userSetting(config, 'secretDiagnostics.minConfidence', 0.75),
     folding: config.get<boolean>('semanticFolding.enabled', false),
+    remoteModels: userSetting(config, 'semanticFolding.allowRemoteModels', false),
     trusted: vscode.workspace.isTrusted !== false,
     ignoredOverrides,
   };

@@ -82,6 +82,7 @@ Files you pick yourself (the active editor or an Explorer selection) are not blo
 - **Redaction at every exit.** Copy for AI, Copy Sanitized File, Preview Sanitized File, and the Refiner redact likely secrets before showing or copying text. Custom patterns passed to the Sanitizer are applied everywhere built-in patterns are.
 - **One clipboard path.** All clipboard writes go through `copyToClipboard()`, which also records the activity log entry.
 - **One network endpoint.** The only network traffic is optional semantic folding to Ollama at `http://localhost:11434`. The endpoint is a constant, not a setting, so a workspace cannot point it elsewhere. Requests refuse HTTP redirects. MaxiMinion sends no telemetry.
+- **No remote models unless you allow them.** A local Ollama server forwards cloud models (for example `gpt-oss:120b-cloud`) to another host. Before sending code, the Refiner looks the model up in Ollama's model list and refuses it if Ollama reports it as remote (`remote_host`/`remote_model`, which also catches renamed copies) or its name has a `cloud` tag. If the list cannot be read, or the model is not in it, nothing is sent: Ollama also accepts spellings the list does not show (such as `library/name`), which could otherwise reach a renamed remote model. The Refiner also treats any endpoint that is not loopback as remote. The extension passes `semanticFolding.allowRemoteModels` from your user settings only (default off), and the setup check refuses remote models before the Refiner is called.
 - **Webview.** The sidebar uses a Content Security Policy that blocks everything except inline styles and one nonce-tagged script, and escapes any dynamic text.
 
 ### Layer 5: Activity log
@@ -115,9 +116,9 @@ Each of these is a real limit, stated plainly:
 - **Secret detection is pattern-based.** It will miss secrets that do not match a known format and can flag things that are not secrets. Always review output before sharing it.
 - **Credential files are recognised by name.** A secret in an ordinarily named file is only caught by redaction.
 - **You can turn protection off.** User settings can disable redaction or warnings; that is your choice, and the activity log records when redaction was off.
-- **Localhost is trusted.** Any local process listening on port 11434 receives code sent for semantic folding. Folding is off by default.
+- **Localhost is trusted.** Any local process listening on port 11434 receives code sent for semantic folding. If that process is a proxy that forwards to another host, or an Ollama server that does not report cloud models as remote, MaxiMinion cannot tell. Folding is off by default.
 - **The extension host is shared.** Other installed extensions run with the same permissions as MaxiMinion and are outside its control. The clipboard is readable by other applications.
 - **The activity log is not tamper-evident.** It is a local record for your own review, not an audit trail.
 - **Hidden-Unicode and ReDoS checks are heuristics.** The tests cover known attack shapes, not every possible input.
-- **The libraries are not the extension.** Developers using `@maximinion/refiner` directly can configure any Ollama endpoint and must apply their own controls; the extension-level guards (settings ceiling, filesystem gate, activity log) are not part of the libraries.
+- **The libraries are not the extension.** Developers using `@maximinion/refiner` directly can configure the Ollama endpoint. The Refiner refuses remote models and endpoints that are not loopback unless `allowRemoteModels` is set, but the extension-level guards (settings ceiling, filesystem gate, activity log) are not part of the libraries.
 - **Semantic folding output is untrusted text.** The summary comes from a local model; review it before relying on it.

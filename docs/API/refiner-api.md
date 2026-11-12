@@ -51,6 +51,7 @@ interface RefinerOptions {
   secretPatterns?: string[];             // Custom regex patterns
   mode?: 'aggressive' | 'balanced' | 'conservative';
   ollamaModel?: string;                  // e.g., 'mistral', 'llama2'
+  allowRemoteModels?: boolean;           // Default false: refuse Ollama cloud models and non-loopback endpoints
   compressionRatio?: number;             // Target: 0.2-0.5
 }
 ```
@@ -114,6 +115,8 @@ if (entropy > 0.7) {
 ### `fold(code: string): Promise<string>`
 
 Compress code via semantic folding (requires Ollama).
+
+Before sending code, the Refiner looks the model up in Ollama's model list. Remote (cloud) models, which Ollama forwards to another host, and endpoints that are not loopback are refused unless `allowRemoteModels: true` is set. `listOllamaModels()` reports `remote` and `remoteHost` for each model.
 
 **Example:**
 ```typescript

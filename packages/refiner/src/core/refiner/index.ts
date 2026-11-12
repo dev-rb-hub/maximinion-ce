@@ -228,5 +228,5 @@ export class Refiner {
 // Export all related types and modules
 export { Sanitizer } from './sanitizer';
 export { EntropyCalculator } from './entropy-calculator';
-export { SemanticFolder, sameOllamaModel } from './semantic-folder';
+export { SemanticFolder, sameOllamaModel, isCloudModelName, isLoopbackEndpoint, remoteModelRefusal } from './semantic-folder';
 export * from './types';

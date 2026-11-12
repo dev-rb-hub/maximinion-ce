@@ -9,7 +9,7 @@ Before you paste code into Copilot Chat, ChatGPT, Claude, or any LLM, MaxiMinion
 - **Copies clean, compact context**: selections, files, or Explorer multi-selections become labelled Markdown blocks with wasted whitespace removed.
 - **Warns you while you edit**: likely secrets are flagged in the Problems panel with a one-click redact fix.
 
-Everything runs on your machine. Your source files are only changed if you apply a quick fix. Optional summarization uses your own local Ollama model; your code is never sent to MaxiMinion servers.
+Everything runs on your machine. Your source files are only changed if you apply a quick fix. Optional summarization uses your own local Ollama model; your code is never sent to MaxiMinion servers, and Ollama cloud models are refused unless you allow them.
 
 *Coming in 0.5.0: dependency-graph ranking that picks the most important files in your workspace to fit your token budget.*
 
@@ -66,6 +66,7 @@ The **Security** section of the sidebar lists each protection with its live stat
 | Credential files | You are asked before files such as `.env` or private keys are copied; automatic workspace scans never read them. |
 | Hidden Unicode | You are asked before copying text with invisible or bidirectional characters. |
 | Network | Only your local Ollama (`http://localhost:11434`), only for semantic folding, with redirects refused. No telemetry. |
+| Remote models | Ollama cloud models, which forward your code to another host, are refused unless you turn on `maximinion.semanticFolding.allowRemoteModels` in your user settings. |
 | Activity log | A local record of what was copied or sent, without file content. |
 
 See the [Security Model](https://github.com/dev-rb-hub/maximinion-ce/blob/main/docs/SECURITY_MODEL.md) for how MaxiMinion protects your code and its known limits.
@@ -84,7 +85,7 @@ The Refiner is the analysis pipeline behind **Run Refiner on Active File (Signal
 
 1. **Secret scrubbing:** likely secrets are replaced with `[REDACTED_…]`.
 2. **Entropy scoring:** Shannon entropy measures information density. `HIGH` means dense, varied content (usually real logic). `LOW` means repetitive content such as imports, generated code, or long comment blocks, which is a good candidate to trim.
-3. **Semantic folding** (optional, off by default): a local [Ollama](https://ollama.com) model summarizes the code. The summary is lossy, so review it. To enable it, start Ollama (`ollama serve`), install a model (`ollama pull phi3`, or use one from `ollama list`), turn on `maximinion.semanticFolding.enabled`, and set `maximinion.semanticFolding.model` if you're not using `phi3`. Run **MaxiMinion: Test Semantic Folding Setup (Ollama)** (also in the sidebar and linked from the setting) to check that Ollama is reachable and the model is installed, and to time a sample fold. Turning folding on, or changing its model, runs the same check; if it fails, folding is turned off again and you're told how to fix it. The sidebar shows whether folding is ready. Folding shows a progress notification that you can cancel.
+3. **Semantic folding** (optional, off by default): a local [Ollama](https://ollama.com) model summarizes the code. The summary is lossy, so review it. To enable it, start Ollama (`ollama serve`), install a model (`ollama pull phi3`, or use one from `ollama list`), turn on `maximinion.semanticFolding.enabled`, and set `maximinion.semanticFolding.model` if you're not using `phi3`. Run **MaxiMinion: Test Semantic Folding Setup (Ollama)** (also in the sidebar and linked from the setting) to check that Ollama is reachable and the model is installed, and to time a sample fold. Turning folding on, or changing its model, runs the same check; if it fails, folding is turned off again and you're told how to fix it. The sidebar shows whether folding is ready. Folding shows a progress notification that you can cancel. Ollama cloud models (for example `gpt-oss:120b-cloud`) run on another host, so Ollama would send your code there; MaxiMinion refuses them unless you turn on `maximinion.semanticFolding.allowRemoteModels` in your user settings.
 
 The refined text opens in a preview tab, and your file is not changed. A report with a plain-English explanation of each step is written to **View → Output → MaxiMinion**.
 
@@ -115,6 +116,7 @@ All commands are in the Command Palette under **MaxiMinion:**.
 | `maximinion.entropyScoring.enabled` | `true` | Enable Shannon entropy scoring. |
 | `maximinion.semanticFolding.enabled` | `false` | Enable semantic folding via a local Ollama instance at `http://localhost:11434`. Requires entropy scoring to be enabled. |
 | `maximinion.semanticFolding.model` | `phi3` | Installed Ollama model used for semantic folding (see `ollama list`). |
+| `maximinion.semanticFolding.allowRemoteModels` | `false` | Allow Ollama cloud models, which send your code to another host. User settings only. |
 | `maximinion.manifest.exportFormat` | `json` | Format (`json` or `markdown`) used for the report logged to the output channel. |
 
 ## Notes

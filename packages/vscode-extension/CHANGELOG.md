@@ -2,6 +2,15 @@
 
 All notable changes to the MaxiMinion VS Code extension are documented here.
 
+## 0.4.1
+
+### Security
+
+- **Ollama cloud models are refused by default.** Ollama forwards cloud models (for example `gpt-oss:120b-cloud`) to another host, so selecting one sent your code off your machine, despite semantic folding being described as local. MaxiMinion now checks Ollama's model list before folding and refuses remote models, including renamed copies of them. If the model list can't be read, or the model isn't in it, nothing is sent.
+- New setting `maximinion.semanticFolding.allowRemoteModels` (default off) allows them. It can only be changed in your user settings; a workspace that tries to turn it on is reported and ignored.
+- The model picker labels remote models, the **Security** status shows whether remote models are blocked, and the activity log records the host a remote model sends code to.
+- Uses `@maximinion/refiner` 0.2.3, which also refuses remote models and endpoints that are not on this machine.
+
 ## 0.4.0
 
 ### Added
