@@ -1,5 +1,6 @@
 import { Refiner, RefinerConfig } from '@maximinion/refiner';
 import * as vscode from 'vscode';
+import { userSetting } from '../settings';
 import { ActivityEvent, ActivityLog } from './activity-log';
 
 /**
@@ -9,9 +10,17 @@ import { ActivityEvent, ActivityLog } from './activity-log';
  */
 export const OLLAMA_ENDPOINT = 'http://localhost:11434';
 
-/** Every Refiner in the extension is created here so that it always uses the local endpoint. */
-export function createRefiner(config: Omit<RefinerConfig, 'ollamaEndpoint'> = {}): Refiner {
-  return new Refiner({ ...config, ollamaEndpoint: OLLAMA_ENDPOINT });
+/** Whether the user allowed Ollama cloud models, which forward code to another host. User settings only. */
+export function remoteModelsAllowed(): boolean {
+  return userSetting(vscode.workspace.getConfiguration('maximinion'), 'semanticFolding.allowRemoteModels', false);
+}
+
+/**
+ * Every Refiner in the extension is created here, so it always uses the local endpoint and only
+ * accepts remote (cloud) models when the user allowed them in their own settings.
+ */
+export function createRefiner(config: Omit<RefinerConfig, 'ollamaEndpoint' | 'allowRemoteModels'> = {}): Refiner {
+  return new Refiner({ ...config, ollamaEndpoint: OLLAMA_ENDPOINT, allowRemoteModels: remoteModelsAllowed() });
 }
 
 /** The single path to the clipboard, which is where text leaves for AI tools. */

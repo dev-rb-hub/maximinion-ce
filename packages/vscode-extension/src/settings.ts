@@ -9,6 +9,7 @@ export const USER_ONLY_SETTINGS = [
   'secretScrubbing.enabled',
   'secretDiagnostics.enabled',
   'secretDiagnostics.minConfidence',
+  'semanticFolding.allowRemoteModels',
 ] as const;
 
 export type UserOnlySetting = (typeof USER_ONLY_SETTINGS)[number];
@@ -40,11 +41,12 @@ export interface RawSettingsSource {
   settings: Record<string, unknown>;
 }
 
-/** Must match the defaults in package.json; a manifest test checks this. */
+/** Must match the defaults in package.json; a manifest test checks this. The defaults are the protective values. */
 export const USER_ONLY_DEFAULTS: Record<UserOnlySetting, boolean | number> = {
   'secretScrubbing.enabled': true,
   'secretDiagnostics.enabled': true,
   'secretDiagnostics.minConfidence': 0.75,
+  'semanticFolding.allowRemoteModels': false,
 };
 
 /**
@@ -75,7 +77,9 @@ export function findIgnoredOverrides(
       if (seen.has(id)) continue;
       seen.add(id);
       const weakens =
-        typeof effective === 'number' ? typeof attempted === 'number' && attempted > effective : attempted === false;
+        typeof effective === 'number'
+          ? typeof attempted === 'number' && attempted > effective
+          : typeof attempted === 'boolean' && attempted !== USER_ONLY_DEFAULTS[key];
       ignored.push({ key, attempted, effective, weakens, source });
     }
   }

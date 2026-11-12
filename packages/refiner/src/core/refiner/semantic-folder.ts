@@ -11,10 +11,33 @@ export function sameOllamaModel(a: string, b: string): boolean {
   return normalize(a) === normalize(b);
 }
 
+/** Ollama cloud models use a `cloud` tag, for example `gpt-oss:120b-cloud` or `minimax-m2:cloud`. */
+export function isCloudModelName(name: string): boolean {
+  return /[:-]cloud$/i.test(name.trim());
+}
+
+/** True when the endpoint is on this machine (loopback). Unparseable endpoints count as remote. */
+export function isLoopbackEndpoint(endpoint: string): boolean {
+  let hostname: string;
+  try {
+    hostname = new URL(endpoint).hostname.toLowerCase();
+  } catch {
+    return false;
+  }
+  return hostname === 'localhost' || hostname === '[::1]' || /^127(\.\d{1,3}){3}$/.test(hostname);
+}
+
+/** Explains why a remote model was refused. */
+export function remoteModelRefusal(model: OllamaModelInfo): string {
+  const destination = model.remoteHost ? ` to ${model.remoteHost}` : ' off this machine';
+  return `Model "${model.name}" is a remote (cloud) model: Ollama would send the code${destination}. Remote models are not allowed.`;
+}
+
 export class SemanticFolder {
   private ollamaEndpoint: string;
   private ollamaModel: string;
   private enabled: boolean;
+  private allowRemoteModels: boolean;
   private cache: Map<string, FoldedSummary>;
   private cacheEnabled: boolean;
 
@@ -22,6 +45,7 @@ export class SemanticFolder {
     this.ollamaEndpoint = config?.ollamaEndpoint || 'http://localhost:11434';
     this.ollamaModel = config?.ollamaModel || 'phi3';
     this.enabled = config?.enableSemanticFolding !== false;
+    this.allowRemoteModels = config?.allowRemoteModels === true;
     this.cacheEnabled = config?.cacheFoldedSummaries !== false;
     this.cache = new Map();
   }
@@ -48,9 +72,23 @@ export class SemanticFolder {
    */
   public async listModels(signal?: AbortSignal): Promise<OllamaModelInfo[]> {
     const response = await this.makeRequest('/api/tags', { method: 'GET', signal });
-    const models: Array<{ name?: string; model?: string; capabilities?: string[] }> = response?.models ?? [];
+    const models: Array<{
+      name?: string;
+      model?: string;
+      capabilities?: string[];
+      remote_host?: string;
+      remote_model?: string;
+    }> = response?.models ?? [];
     return models
-      .map((m) => ({ name: m.name ?? m.model ?? '', capabilities: m.capabilities ?? [] }))
+      .map((m) => {
+        const name = m.name ?? m.model ?? '';
+        return {
+          name,
+          capabilities: m.capabilities ?? [],
+          remote: Boolean(m.remote_host || m.remote_model) || isCloudModelName(name),
+          ...(m.remote_host ? { remoteHost: m.remote_host } : {}),
+        };
+      })
       .filter((m) => m.name.length > 0);
   }
 
@@ -146,9 +184,10 @@ Summary (1-2 lines):`;
    */
   private async callOllama(prompt: string, code: string, signal?: AbortSignal): Promise<OllamaFoldResponse> {
     try {
+      const model = await this.resolveModel(signal);
       // Thinking models (e.g. gemma4, qwen3) otherwise spend minutes reasoning before a 1-2 line answer.
       // Non-thinking models reject the flag, so it is only sent when the model supports it.
-      const supportsThinking = await this.modelSupportsThinking(signal);
+      const supportsThinking = model?.capabilities.includes('thinking') ?? false;
       const response = await this.makeRequest('/api/generate', {
         method: 'POST',
         signal,
@@ -188,14 +227,38 @@ Summary (1-2 lines):`;
     }
   }
 
-  private async modelSupportsThinking(signal?: AbortSignal): Promise<boolean> {
-    try {
-      const models = await this.listModels(signal);
-      const model = models.find((m) => sameOllamaModel(m.name, this.ollamaModel));
-      return model?.capabilities.includes('thinking') ?? false;
-    } catch {
-      return false;
+  /**
+   * Looks up the configured model before any code is sent, and refuses remote models unless allowed.
+   * Fails closed: if the model list cannot be read, or the model is not in it, nothing is sent, because
+   * Ollama also accepts spellings the list does not show (for example `library/name`), which could
+   * reach a renamed remote model. With `allowRemoteModels`, an unlisted model is left to Ollama to report.
+   */
+  private async resolveModel(signal?: AbortSignal): Promise<OllamaModelInfo | undefined> {
+    if (!this.allowRemoteModels && !isLoopbackEndpoint(this.ollamaEndpoint)) {
+      throw new Error(
+        `Ollama endpoint ${this.ollamaEndpoint} is not on this machine, so the code would leave it. Remote models are not allowed.`
+      );
     }
+    let models: OllamaModelInfo[];
+    try {
+      models = await this.listModels(signal);
+    } catch (error) {
+      throw new Error(
+        `could not check that model "${this.ollamaModel}" is local (${error instanceof Error ? error.message : error})`
+      );
+    }
+    const model =
+      models.find((m) => sameOllamaModel(m.name, this.ollamaModel)) ??
+      (isCloudModelName(this.ollamaModel)
+        ? { name: this.ollamaModel, capabilities: [], remote: true }
+        : undefined);
+    if (model?.remote && !this.allowRemoteModels) {
+      throw new Error(remoteModelRefusal(model));
+    }
+    if (!model && !this.allowRemoteModels) {
+      throw new Error(`Model "${this.ollamaModel}" is not installed in Ollama (check the name with \`ollama list\`).`);
+    }
+    return model;
   }
 
   /**

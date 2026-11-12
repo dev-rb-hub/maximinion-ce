@@ -3,7 +3,7 @@
  * Tests for sanitizer, entropy calculator, and semantic folder
  */
 
-import { Refiner, Sanitizer, EntropyCalculator, SemanticFolder, sameOllamaModel } from '../src/core/refiner';
+import { Refiner, Sanitizer, EntropyCalculator, SemanticFolder, sameOllamaModel, isCloudModelName, isLoopbackEndpoint } from '../src/core/refiner';
 import { estimateTokenCount } from '../src';
 
 describe('Phase 1: THE REFINER - Unit Tests', () => {
@@ -274,12 +274,12 @@ function test() {
     const realFetch = global.fetch;
     const tags = { models: [{ name: 'gemma4:26b', capabilities: ['completion', 'thinking'] }, { name: 'phi3:latest', capabilities: ['completion'] }] };
 
-    function mockOllama(generate: (body: any) => { status: number; json: unknown }) {
+    function mockOllama(generate: (body: any) => { status: number; json: unknown }, tagsResponse: { status: number; json: unknown } = { status: 200, json: tags }) {
       const calls: any[] = [];
       global.fetch = jest.fn(async (url: any, init: any) => {
         const body = init?.body ? JSON.parse(init.body) : undefined;
         calls.push({ url: String(url), body });
-        const result = String(url).endsWith('/api/tags') ? { status: 200, json: tags } : generate(body);
+        const result = String(url).endsWith('/api/tags') ? tagsResponse : generate(body);
         return { ok: result.status < 400, status: result.status, json: async () => result.json } as Response;
       }) as typeof fetch;
       return calls;
@@ -317,7 +317,7 @@ function test() {
       mockOllama(() => ({ status: 404, json: { error: "model 'mistral' not found" } }));
       const code = 'const a = 1;';
 
-      const result = await new SemanticFolder({ ollamaModel: 'mistral' }).fold(code);
+      const result = await new SemanticFolder({ ollamaModel: 'mistral', allowRemoteModels: true }).fold(code);
 
       expect(result.summary).toBe(code);
       expect(result.confidence).toBe(0);
@@ -331,6 +331,93 @@ function test() {
       expect(models.map((m) => m.name)).toEqual(['gemma4:26b', 'phi3:latest']);
       expect(sameOllamaModel('phi3', 'phi3:latest')).toBe(true);
       expect(sameOllamaModel('gemma4', 'gemma4:26b')).toBe(false);
+    });
+
+    describe('remote (cloud) models', () => {
+      const cloudTags = {
+        models: [
+          ...tags.models,
+          { name: 'gpt-oss:120b-cloud', remote_model: 'gpt-oss:120b', remote_host: 'https://ollama.com:443', capabilities: ['completion'] },
+          { name: 'renamed-remote', remote_host: 'https://ollama.example', capabilities: ['completion'] },
+        ],
+      };
+      const generated = (calls: any[]) => calls.filter((c) => c.url.endsWith('/api/generate'));
+
+      test('lists remote models with their host', async () => {
+        mockOllama(() => ({ status: 200, json: {} }), { status: 200, json: cloudTags });
+        const models = await new Refiner().listOllamaModels();
+
+        expect(models.find((m) => m.name === 'gpt-oss:120b-cloud')).toMatchObject({ remote: true, remoteHost: 'https://ollama.com:443' });
+        expect(models.find((m) => m.name === 'renamed-remote')?.remote).toBe(true);
+        expect(models.find((m) => m.name === 'phi3:latest')?.remote).toBe(false);
+        expect(isCloudModelName('minimax-m2:cloud')).toBe(true);
+        expect(isCloudModelName('mycloud')).toBe(false);
+      });
+
+      test.each(['gpt-oss:120b-cloud', 'renamed-remote'])('refuses %s by default without sending code', async (model) => {
+        const calls = mockOllama(() => ({ status: 200, json: { response: 'Adds.' } }), { status: 200, json: cloudTags });
+        const code = 'const secret = 1;';
+
+        const result = await new SemanticFolder({ ollamaModel: model }).fold(code);
+
+        expect(generated(calls)).toHaveLength(0);
+        expect(result.summary).toBe(code);
+        expect(result.error).toContain('remote (cloud) model');
+      });
+
+      test('names the remote host in the refusal', async () => {
+        mockOllama(() => ({ status: 200, json: {} }), { status: 200, json: cloudTags });
+        const result = await new SemanticFolder({ ollamaModel: 'gpt-oss:120b-cloud' }).fold('x');
+
+        expect(result.error).toContain('https://ollama.com:443');
+      });
+
+      test('refuses a cloud-tagged name even when Ollama does not list it', async () => {
+        const calls = mockOllama(() => ({ status: 200, json: { response: 'Adds.' } }));
+        const result = await new SemanticFolder({ ollamaModel: 'qwen3-coder:480b-cloud' }).fold('x');
+
+        expect(generated(calls)).toHaveLength(0);
+        expect(result.error).toContain('remote (cloud) model');
+      });
+
+      test('sends nothing when the model list cannot be read', async () => {
+        const calls = mockOllama(() => ({ status: 200, json: { response: 'Adds.' } }), { status: 500, json: {} });
+        const result = await new SemanticFolder({ ollamaModel: 'phi3' }).fold('x');
+
+        expect(generated(calls)).toHaveLength(0);
+        expect(result.error).toContain('could not check that model "phi3" is local');
+      });
+
+      test.each(['library/renamed-remote', 'registry.ollama.ai/library/renamed-remote', 'Renamed-Remote'])(
+        'sends nothing for %s, a spelling Ollama accepts but its model list does not show',
+        async (model) => {
+          const calls = mockOllama(() => ({ status: 200, json: { response: 'Adds.' } }), { status: 200, json: cloudTags });
+          const result = await new SemanticFolder({ ollamaModel: model }).fold('x');
+
+          expect(generated(calls)).toHaveLength(0);
+          expect(result.error).toContain('is not installed in Ollama');
+        },
+      );
+
+      test('folds with a remote model when allowRemoteModels is set', async () => {
+        const calls = mockOllama(() => ({ status: 200, json: { response: 'Adds.' } }), { status: 200, json: cloudTags });
+        const result = await new SemanticFolder({ ollamaModel: 'gpt-oss:120b-cloud', allowRemoteModels: true }).fold('x');
+
+        expect(generated(calls)).toHaveLength(1);
+        expect(result.error).toBeUndefined();
+      });
+
+      test('treats an endpoint off this machine as remote, whatever the model name', async () => {
+        const calls = mockOllama(() => ({ status: 200, json: { response: 'Adds.' } }));
+
+        for (const endpoint of ['https://ollama.com', 'http://192.168.1.20:11434', 'not a url']) {
+          const result = await new SemanticFolder({ ollamaEndpoint: endpoint, ollamaModel: 'phi3' }).fold('x');
+          expect(result.error).toContain('is not on this machine');
+        }
+        expect(calls).toHaveLength(0);
+        expect(['http://localhost:11434', 'http://127.0.0.1:11434', 'http://[::1]:11434'].every(isLoopbackEndpoint)).toBe(true);
+        expect(isLoopbackEndpoint('http://localhost.example.com')).toBe(false);
+      });
     });
   });
 

@@ -728,12 +728,15 @@ describe('MaxiMinion VS Code commands', () => {
     const realFetch = global.fetch;
     let generateCalls: number;
 
-    function mockOllama(options: { reachable?: boolean; models?: string[]; summary?: string }) {
+    function mockOllama(options: { reachable?: boolean; models?: string[]; summary?: string; remote?: Record<string, string> }) {
       generateCalls = 0;
       global.fetch = jest.fn(async (url: any) => {
         if (options.reachable === false) throw new Error('connect ECONNREFUSED');
         if (String(url).endsWith('/api/tags')) {
-          return { ok: true, status: 200, json: async () => ({ models: (options.models ?? []).map((name) => ({ name })) }) };
+          const models = (options.models ?? []).map((name) =>
+            options.remote?.[name] ? { name, remote_model: name, remote_host: options.remote[name] } : { name },
+          );
+          return { ok: true, status: 200, json: async () => ({ models }) };
         }
         generateCalls++;
         return { ok: true, status: 200, json: async () => ({ response: options.summary ?? 'Adds numbers.' }) };
@@ -825,6 +828,49 @@ describe('MaxiMinion VS Code commands', () => {
       await commandHandlers.get('maximinion.runRefinerOnActiveFile')!();
 
       expect(generateCalls).toBe(1);
+    });
+
+    describe('remote (cloud) models', () => {
+      const cloud = { models: ['gpt-oss:120b-cloud', 'phi3:latest'], remote: { 'gpt-oss:120b-cloud': 'https://ollama.com:443' } };
+
+      test('refuses a cloud model by default, sends nothing, and offers local models', async () => {
+        configValues['semanticFolding.model'] = 'gpt-oss:120b-cloud';
+        mockOllama(cloud);
+
+        await commandHandlers.get('maximinion.runRefinerOnActiveFile')!();
+
+        expect(generateCalls).toBe(0);
+        expect(mockVscode.window.showWarningMessage).toHaveBeenCalledWith(
+          expect.stringContaining('Semantic folding skipped: Model "gpt-oss:120b-cloud" is a remote (cloud) model: Ollama would send the code to https://ollama.com:443.'),
+          'Use phi3:latest',
+          'Choose Model',
+          'Remote Model Setting',
+        );
+        expect(activityLines()).not.toContainEqual(expect.stringContaining('Sent to'));
+      });
+
+      test('ignores a workspace setting that allows remote models', async () => {
+        configValues['semanticFolding.model'] = 'gpt-oss:120b-cloud';
+        workspaceConfigValues['semanticFolding.allowRemoteModels'] = true;
+        mockOllama(cloud);
+
+        await commandHandlers.get('maximinion.runRefinerOnActiveFile')!();
+
+        expect(generateCalls).toBe(0);
+      });
+
+      test('folds with a cloud model the user allowed, and logs where the code went', async () => {
+        configValues['semanticFolding.model'] = 'gpt-oss:120b-cloud';
+        configValues['semanticFolding.allowRemoteModels'] = true;
+        mockOllama(cloud);
+
+        await commandHandlers.get('maximinion.runRefinerOnActiveFile')!();
+
+        expect(generateCalls).toBe(1);
+        expect(activityLines()).toContainEqual(
+          expect.stringContaining('Sent to REMOTE model gpt-oss:120b-cloud via http://localhost:11434, forwarded to https://ollama.com:443: test.ts'),
+        );
+      });
     });
 
     describe('setup check', () => {

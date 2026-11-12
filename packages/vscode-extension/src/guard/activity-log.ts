@@ -18,6 +18,8 @@ export type ActivityEvent =
       tokens: number;
       /** Omitted when no workspace code is sent. */
       scrubbing?: boolean;
+      /** Set when the user allowed a remote (cloud) model: where Ollama forwards the request. */
+      remote?: { host?: string };
     }
   | { kind: 'preview'; command: string; source: string; redacted: number; scrubbing: boolean }
   | { kind: 'declined'; command: string; sources: string[]; reason: string }
@@ -42,7 +44,10 @@ export function formatActivity(event: ActivityEvent): string {
       );
     case 'local-model':
       return (
-        `Sent to local model ${event.model} at ${event.endpoint}: ${event.source}, ~${event.tokens} tokens` +
+        (event.remote
+          ? `Sent to REMOTE model ${event.model} via ${event.endpoint}, forwarded to ${event.remote.host ?? 'another host'}: `
+          : `Sent to local model ${event.model} at ${event.endpoint}: `) +
+        `${event.source}, ~${event.tokens} tokens` +
         (event.scrubbing === undefined ? '' : `, ${scrubbing(event.scrubbing)}`)
       );
     case 'preview':

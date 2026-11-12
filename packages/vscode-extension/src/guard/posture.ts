@@ -23,6 +23,8 @@ export interface PostureInputs {
   diagnostics: boolean;
   minConfidence: number;
   folding: boolean;
+  /** The user allowed Ollama cloud models in their own settings. */
+  remoteModels: boolean;
   trusted: boolean;
   ignoredOverrides: IgnoredOverride[];
 }
@@ -108,6 +110,15 @@ export function getSecurityPosture(inputs: PostureInputs): PostureRow[] {
         inputs.folding ? 'on' : 'off'
       }. Redirects are refused.`,
       enforcedBy: 'guard/egress.ts: OLLAMA_ENDPOINT, createRefiner()',
+    },
+    {
+      layer: 'Egress',
+      control: 'Remote models',
+      state: inputs.remoteModels ? 'off' : 'on',
+      status: inputs.remoteModels
+        ? 'Allowed in your user settings: folding with an Ollama cloud model sends code to another host.'
+        : 'Ollama cloud models are refused, so folding never sends code off this machine.',
+      enforcedBy: '@maximinion/refiner SemanticFolder (allowRemoteModels), guard/egress.ts: createRefiner()',
     },
     {
       layer: 'Egress',

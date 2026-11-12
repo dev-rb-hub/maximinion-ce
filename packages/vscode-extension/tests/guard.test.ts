@@ -11,12 +11,16 @@ function fileUri(fsPath: string) {
 
 const FileType = { Unknown: 0, File: 1, Directory: 2, SymbolicLink: 64 };
 const folder = { uri: fileUri(workspaceRoot), name: 'ws', index: 0 };
+const settingValues: { user: Record<string, unknown>; workspace: Record<string, unknown> } = { user: {}, workspace: {} };
 
 const mockVscode = {
   FileType,
   window: { createOutputChannel: jest.fn() },
   env: { clipboard: { writeText: jest.fn() } },
   workspace: {
+    getConfiguration: jest.fn(() => ({
+      inspect: (key: string) => ({ key, globalValue: settingValues.user[key], workspaceValue: settingValues.workspace[key] }),
+    })),
     getWorkspaceFolder: jest.fn((uri: { fsPath: string }) =>
       uri.fsPath.startsWith(workspaceRoot + path.sep) ? folder : undefined,
     ),
@@ -41,7 +45,7 @@ jest.mock('vscode', () => mockVscode, { virtual: true });
 
 import { SECRET_REGEX_PATTERNS } from '@maximinion/refiner';
 import { formatActivity } from '../src/guard/activity-log';
-import { OLLAMA_ENDPOINT } from '../src/guard/egress';
+import { createRefiner, OLLAMA_ENDPOINT } from '../src/guard/egress';
 import { findHiddenUnicode } from '../src/guard/hidden-unicode';
 import { getSecurityPosture, PostureInputs, renderPostureMarkdown } from '../src/guard/posture';
 import { SENSITIVE_EXCEPTIONS, SENSITIVE_RULES, sensitiveReason } from '../src/guard/sensitive-paths';
@@ -133,6 +137,18 @@ describe('workspace settings files', () => {
       'secretScrubbing.enabled',
     );
   });
+
+  test('flags a workspace trying to allow remote models, and not one keeping them blocked', () => {
+    const allow = [{ source: '.vscode/settings.json', settings: { 'maximinion.semanticFolding.allowRemoteModels': true } }];
+    const block = [{ source: '.vscode/settings.json', settings: { 'maximinion.semanticFolding.allowRemoteModels': false } }];
+
+    expect(findIgnoredOverrides(userConfig(), allow)).toEqual([
+      { key: 'semanticFolding.allowRemoteModels', attempted: true, effective: false, weakens: true, source: '.vscode/settings.json' },
+    ]);
+    expect(findIgnoredOverrides(userConfig({ 'semanticFolding.allowRemoteModels': true }), block)).toEqual([
+      { key: 'semanticFolding.allowRemoteModels', attempted: false, effective: true, weakens: false, source: '.vscode/settings.json' },
+    ]);
+  });
 });
 
 describe('security posture', () => {
@@ -141,6 +157,7 @@ describe('security posture', () => {
     diagnostics: true,
     minConfidence: 0.75,
     folding: false,
+    remoteModels: false,
     trusted: true,
     ignoredOverrides: [],
   };
@@ -174,6 +191,14 @@ describe('security posture', () => {
     });
     expect(row(rows, 'Protection settings').status).not.toContain('0.5');
     expect(row(rows, 'Workspace trust').status).toContain('Restricted Mode');
+  });
+
+  test('shows whether remote models are blocked or allowed by the user', () => {
+    expect(row(getSecurityPosture(inputs), 'Remote models').state).toBe('on');
+    expect(row(getSecurityPosture({ ...inputs, remoteModels: true }), 'Remote models')).toMatchObject({
+      state: 'off',
+      status: expect.stringContaining('sends code to another host'),
+    });
   });
 
   test('renders a Markdown table that escapes pipes', () => {
@@ -210,6 +235,44 @@ describe('findHiddenUnicode', () => {
   });
 });
 
+describe('createRefiner', () => {
+  const realFetch = global.fetch;
+  let generateCalls = 0;
+
+  beforeEach(() => {
+    generateCalls = 0;
+    settingValues.user = {};
+    settingValues.workspace = {};
+    jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    global.fetch = jest.fn(async (url: unknown) => {
+      if (String(url).endsWith('/api/tags')) {
+        return { ok: true, status: 200, json: async () => ({ models: [{ name: 'gpt-oss:120b-cloud', remote_host: 'https://ollama.com:443' }] }) };
+      }
+      generateCalls++;
+      return { ok: true, status: 200, json: async () => ({ response: 'Adds.' }) };
+    }) as unknown as typeof fetch;
+  });
+
+  afterEach(() => {
+    global.fetch = realFetch;
+    jest.restoreAllMocks();
+  });
+
+  const foldWithCloudModel = () => createRefiner({ ollamaModel: 'gpt-oss:120b-cloud', cacheFoldedSummaries: false }).fold('x');
+
+  test('passes only the user setting for remote models to the Refiner', async () => {
+    expect((await foldWithCloudModel()).error).toContain('remote (cloud) model');
+
+    settingValues.workspace['semanticFolding.allowRemoteModels'] = true;
+    expect((await foldWithCloudModel()).error).toContain('remote (cloud) model');
+    expect(generateCalls).toBe(0);
+
+    settingValues.user['semanticFolding.allowRemoteModels'] = true;
+    expect((await foldWithCloudModel()).error).toBeUndefined();
+    expect(generateCalls).toBe(1);
+  });
+});
+
 describe('formatActivity', () => {
   test('describes clipboard events without content', () => {
     expect(
@@ -228,6 +291,22 @@ describe('formatActivity', () => {
   test('truncates long source lists', () => {
     const sources = Array.from({ length: 25 }, (_, i) => `f${i}.ts`);
     expect(formatActivity({ kind: 'declined', command: 'Copy for AI', sources, reason: 'x' })).toContain(', f19.ts, +5 more]');
+  });
+
+  test('says where a remote model sends the code', () => {
+    expect(
+      formatActivity({
+        kind: 'local-model',
+        endpoint: OLLAMA_ENDPOINT,
+        model: 'gpt-oss:120b-cloud',
+        source: 'a.ts',
+        tokens: 10,
+        scrubbing: true,
+        remote: { host: 'https://ollama.com:443' },
+      }),
+    ).toBe(
+      `Sent to REMOTE model gpt-oss:120b-cloud via ${OLLAMA_ENDPOINT}, forwarded to https://ollama.com:443: a.ts, ~10 tokens, secret redaction on`,
+    );
   });
 });
 

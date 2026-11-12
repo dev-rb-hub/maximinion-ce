@@ -7,7 +7,7 @@ How MaxiMinion Community Edition handles your code, which secrets it detects, an
 Community Edition runs entirely on your machine.
 
 - **What it reads:** the files you choose to copy or analyse. The upcoming Context Pack (#32) will also read source files in your open workspace, through a guarded reader that skips credential files, binaries, large files, and anything outside the workspace.
-- **Where data goes:** to your clipboard when you use Copy for AI or Copy Sanitized File, to local preview tabs and output channels, and, only if you turn on semantic folding, to a local Ollama server at `http://localhost:11434`.
+- **Where data goes:** to your clipboard when you use Copy for AI or Copy Sanitized File, to local preview tabs and output channels, and, only if you turn on semantic folding, to a local Ollama server at `http://localhost:11434`. Ollama cloud models, which Ollama forwards to another host, are refused unless you allow them in your user settings.
 - **What it stores:** extension settings, a first-run notice flag, and the *MaxiMinion Activity* log (file paths and counts, never file content), which VS Code keeps with its logs for recent sessions.
 - **What it sends to MaxiMinion or third parties:** nothing. There is no telemetry and no cloud service in Community Edition.
 
@@ -60,11 +60,11 @@ const sanitizer = new Sanitizer({
 - **Check the activity log.** **MaxiMinion: Show Activity Log** lists what was copied or sent, how many values were redacted, and what you declined.
 - **Check the security status.** The sidebar's **Security** section and **MaxiMinion: Show Security Status** show each protection's live state, read from the code that enforces it.
 - **Restricted Mode works.** In untrusted folders, Copy for AI, warnings, and sanitization work, and semantic folding cannot be enabled by the workspace.
-- **Semantic folding is local and optional.** It is off by default and only talks to Ollama on `localhost`. Summaries are lossy; review them.
+- **Semantic folding is local and optional.** It is off by default and only talks to Ollama on `localhost`. Ollama cloud models (for example `gpt-oss:120b-cloud`) are refused, because Ollama would forward your code to another host; you can allow them with `maximinion.semanticFolding.allowRemoteModels` in your user settings (a workspace cannot). Summaries are lossy; review them.
 
 ## Network Security
 
-The extension makes no network requests except optional semantic folding to `http://localhost:11434`. The endpoint is fixed, not a setting, and HTTP redirects are refused.
+The extension makes no network requests except optional semantic folding to `http://localhost:11434`. The endpoint is fixed, not a setting, and HTTP redirects are refused. Before sending code, the Refiner checks Ollama's model list and refuses remote (cloud) models unless you allowed them.
 
 The Proxy Transport library has no CLI and runs in-process; it does not currently open a network port or socket. Its HTTP and WebSocket switches can be turned off explicitly:
 
@@ -74,7 +74,7 @@ import { ProxyTransport } from '@maximinion/proxy-transport';
 const proxy = new ProxyTransport({ enableHTTP: false, enableWebSocket: false });
 ```
 
-If you use the libraries directly, you are responsible for where their output goes. For example, `@maximinion/refiner` lets you configure any Ollama endpoint.
+If you use the libraries directly, you are responsible for where their output goes. `@maximinion/refiner` lets you configure the Ollama endpoint; it refuses remote (cloud) models, and endpoints that are not on this machine, unless you pass `allowRemoteModels: true`.
 
 ## Professional and Enterprise Editions
 
@@ -101,7 +101,7 @@ Do not open a public issue. Use a [private security advisory](https://github.com
 Nowhere outside your machine. Community Edition keeps no copy of your code; the activity log records file paths and counts only.
 
 **Does MaxiMinion send my code anywhere?**
-Only where you put it: the clipboard when you copy, and a local Ollama server if you turn on semantic folding.
+Only where you put it: the clipboard when you copy, and a local Ollama server if you turn on semantic folding. Ollama cloud models are refused unless you allow them in your user settings.
 
 **Can a repository I clone weaken MaxiMinion?**
 It cannot turn off redaction or warnings, point semantic folding at another server, or enable folding in an untrusted folder. See the [Security Model](../SECURITY_MODEL.md) for the full list of controls and their known gaps.

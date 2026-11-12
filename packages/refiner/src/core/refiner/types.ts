@@ -11,6 +11,11 @@ export interface RefinerConfig {
   enableMLSanitizer?: boolean;
   ollamaEndpoint?: string;
   ollamaModel?: string;
+  /**
+   * Allow folding with remote Ollama models (cloud models such as `gpt-oss:120b-cloud`), which a local
+   * Ollama server forwards to another host, so the code leaves the machine. Default: false.
+   */
+  allowRemoteModels?: boolean;
   customRegexPatterns?: RegexPatternSet;
   cacheFoldedSummaries?: boolean;
 }
@@ -132,6 +137,10 @@ export interface FoldedSummary {
 export interface OllamaModelInfo {
   name: string;
   capabilities: string[];
+  /** True for remote (cloud) models: Ollama forwards requests for them to another host. */
+  remote: boolean;
+  /** The upstream host Ollama forwards to, when it reports one. */
+  remoteHost?: string;
 }
 
 /**
