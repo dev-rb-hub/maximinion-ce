@@ -64,6 +64,24 @@ describe('extension manifest', () => {
       'maximinion.semanticFolding.enabled',
     );
   });
+
+  // The VSIX ships without node_modules, so the bundle must not require files that weren't bundled.
+  test('build script produces a self-contained bundle', async () => {
+    const esbuild = await import('esbuild');
+    const mainFields = /--main-fields=(\S+)/.exec(manifest.scripts.build)?.[1]?.split(',');
+    const result = await esbuild.build({
+      entryPoints: [path.join(root, 'src', 'extension.ts')],
+      bundle: true,
+      platform: 'node',
+      external: ['vscode'],
+      mainFields,
+      write: false,
+      logLevel: 'silent',
+    });
+    // esbuild renames shadowed `require` to require2, require3, ...
+    const relativeRequires = result.outputFiles[0].text.match(/\brequire\d*\(\s*["']\.{1,2}\/[^"']*["']\s*\)/g) ?? [];
+    expect(relativeRequires).toEqual([]);
+  }, 30000);
 });
 
 describe('forbidden APIs (see docs/SECURITY_MODEL.md)', () => {

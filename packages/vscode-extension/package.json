@@ -389,7 +389,7 @@
     ]
   },
   "scripts": {
-    "build": "esbuild src/extension.ts --bundle --platform=node --target=node20 --external:vscode --outfile=dist/extension.js",
+    "build": "esbuild src/extension.ts --bundle --platform=node --target=node20 --external:vscode --main-fields=module,main --outfile=dist/extension.js",
     "test": "jest",
     "typecheck": "tsc --noEmit",
     "vscode:prepublish": "npm run typecheck && npm run build",
