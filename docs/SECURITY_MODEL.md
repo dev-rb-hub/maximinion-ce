@@ -94,7 +94,7 @@ Following the Kiro Crew posture panel, users can see these controls working inst
 
 - The **Security** section of the extension sidebar lists each control with its live state (on, off in your settings, needs attention, or information), with details on hover.
 - **MaxiMinion: Show Security Status** opens a report with each control, its live state, and the code that enforces it.
-- If a workspace's settings try to lower protection, the user is told once per workspace, and the event is logged.
+- If a workspace's settings try to lower protection, the user is told once per workspace, and the event is logged. VS Code removes application-scoped keys from workspace, folder and dev container settings before extensions can see them, so MaxiMinion reads `.vscode/settings.json`, `devcontainer.json` and the `.code-workspace` file directly (read-only, size-limited, never applied) to detect the attempt.
 
 The rule that keeps this honest: **every value shown is read from the constant or function that enforces it** ([posture.ts](../packages/vscode-extension/src/guard/posture.ts)): the pattern count from `SECRET_REGEX_PATTERNS`, the endpoint from `OLLAMA_ENDPOINT`, the credential-file rules from the tables `sensitiveReason()` uses, the scan limits from `SCAN_LIMITS`, and settings through `userSetting()`. Tests check the report against those sources and check that every example rule shown to users matches its rule. The report links to the known gaps below.
 

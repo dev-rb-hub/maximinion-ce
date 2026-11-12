@@ -44,7 +44,7 @@ export function getSecurityPosture(inputs: PostureInputs): PostureRow[] {
       status:
         weakening.length > 0
           ? `This workspace tries to lower protection (${weakening
-              .map((override) => `maximinion.${override.key} = ${JSON.stringify(override.attempted)}`)
+              .map((override) => `maximinion.${override.key} = ${JSON.stringify(override.attempted)} in ${override.source}`)
               .join(', ')}). MaxiMinion ignores it and uses your user settings.`
           : 'Only your user settings can change them; workspace and dev container settings are ignored.',
       enforcedBy: 'settings.ts: userSetting(), "scope": "application"',

@@ -7,7 +7,8 @@ import { sensitiveReason } from './guard/sensitive-paths';
 import { getSecurityPosture, PostureInputs, PostureState, renderPostureMarkdown } from './guard/posture';
 import { buildAiPayload, estimateTokens, formatTokens, PayloadSource } from './payload';
 import { findSecretRanges, PII_TYPES } from './secret-ranges';
-import { findIgnoredOverrides, userSetting } from './settings';
+import { findIgnoredOverrides, IgnoredOverride, userSetting } from './settings';
+import { readWorkspaceSettingSources, WORKSPACE_SETTINGS_FILES } from './guard/workspace-settings';
 
 export const CE_NOTICE =
   'MaxiMinion.AI Community Edition is provided completely free of charge for evaluation and individual use. ' +
@@ -838,6 +839,11 @@ function getNonce(): string {
 const SECURITY_STATUS_SCHEME = 'maximinion-security';
 const OVERRIDE_NOTICE_KEY = 'maximinion.ignoredOverridesNotified';
 
+// Workspace attempts to lower protection, refreshed when settings or settings files change.
+let ignoredOverrides: IgnoredOverride[] = [];
+let ignoredOverridesRun = 0;
+const postureListeners = new Set<() => void>();
+
 function currentPostureInputs(): PostureInputs {
   const config = getConfig();
   return {
@@ -846,7 +852,7 @@ function currentPostureInputs(): PostureInputs {
     minConfidence: userSetting(config, 'secretDiagnostics.minConfidence', 0.75),
     folding: config.get<boolean>('semanticFolding.enabled', false),
     trusted: vscode.workspace.isTrusted !== false,
-    ignoredOverrides: findIgnoredOverrides(config),
+    ignoredOverrides,
   };
 }
 
@@ -862,19 +868,27 @@ async function showSecurityStatus(): Promise<void> {
 }
 
 /**
- * Tells the user, once per workspace and set of values, when the workspace's settings try to lower
- * protection. The values are already ignored; this makes that visible.
+ * Re-reads what the workspace tries to set, then tells the user, once per workspace and set of
+ * values, when that would lower protection. The values are already ignored; this makes that visible.
  */
-function noticeIgnoredOverrides(context: vscode.ExtensionContext): void {
-  const weakening = findIgnoredOverrides(getConfig()).filter((override) => override.weakens);
-  const settings = weakening.map((override) => `maximinion.${override.key} = ${JSON.stringify(override.attempted)}`);
+async function refreshIgnoredOverrides(context: vscode.ExtensionContext): Promise<void> {
+  const run = ++ignoredOverridesRun;
+  const sources = await readWorkspaceSettingSources();
+  if (run !== ignoredOverridesRun) return;
+  ignoredOverrides = findIgnoredOverrides(getConfig(), sources);
+  postureListeners.forEach((listener) => listener());
+
+  const weakening = ignoredOverrides.filter((override) => override.weakens);
+  const settings = weakening.map(
+    (override) => `maximinion.${override.key} = ${JSON.stringify(override.attempted)} (${override.source})`,
+  );
   const signature = settings.join(';');
   if (!signature || context.workspaceState.get<string>(OVERRIDE_NOTICE_KEY) === signature) return;
 
   void context.workspaceState.update(OVERRIDE_NOTICE_KEY, signature);
   activityLog.record({ kind: 'override-ignored', settings });
   void warn(
-    `This workspace's settings try to lower secret protection (${settings.join(', ')}). ` +
+    `This workspace's settings try to lower secret protection: ${settings.join(', ')}. ` +
       'MaxiMinion ignores them and uses your user settings.',
     'Show Security Status',
   ).then((choice) => {
@@ -903,10 +917,12 @@ class MaximinionSidebarProvider implements vscode.WebviewViewProvider {
       webviewView.webview.html = this.getHtml();
     };
     foldingStatusListeners.add(rerender);
+    postureListeners.add(rerender);
     webviewView.onDidDispose(() => {
       configListener.dispose();
       trustListener.dispose();
       foldingStatusListeners.delete(rerender);
+      postureListeners.delete(rerender);
     });
 
     webviewView.webview.onDidReceiveMessage((message: { command?: string }) => {
@@ -1056,7 +1072,7 @@ export function activate(context: vscode.ExtensionContext): void {
       if (event.affectsConfiguration('maximinion')) {
         statusBar.update();
         diagnostics.refreshAll();
-        noticeIgnoredOverrides(context);
+        void refreshIgnoredOverrides(context);
       }
       if (event.affectsConfiguration('maximinion.semanticFolding')) {
         scheduleFoldingEnforcement();
@@ -1107,5 +1123,17 @@ export function activate(context: vscode.ExtensionContext): void {
   statusBar.update();
   void refreshFoldingStatus(false);
   showNoticeOnce(context);
-  noticeIgnoredOverrides(context);
+
+  const settingsFiles = vscode.workspace.createFileSystemWatcher(
+    `**/{${[...WORKSPACE_SETTINGS_FILES, '*.code-workspace'].join(',')}}`,
+  );
+  const onSettingsFile = () => void refreshIgnoredOverrides(context);
+  context.subscriptions.push(
+    settingsFiles,
+    settingsFiles.onDidChange(onSettingsFile),
+    settingsFiles.onDidCreate(onSettingsFile),
+    settingsFiles.onDidDelete(onSettingsFile),
+    vscode.workspace.onDidChangeWorkspaceFolders(onSettingsFile),
+  );
+  void refreshIgnoredOverrides(context);
 }

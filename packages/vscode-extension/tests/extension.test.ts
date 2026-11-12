@@ -59,7 +59,10 @@ const mockVscode = {
     clipboard: { writeText: jest.fn() },
     openExternal: jest.fn(),
   },
-  Uri: { parse: jest.fn((value: string) => ({ value })) },
+  Uri: {
+    parse: jest.fn((value: string) => ({ value })),
+    joinPath: jest.fn((base: { path: string }, ...parts: string[]) => ({ scheme: 'file', path: [base.path, ...parts].join('/') })),
+  },
   FileType: { File: 1, Directory: 2 },
   StatusBarAlignment: { Left: 1, Right: 2 },
   ProgressLocation: { Notification: 15 },
@@ -111,7 +114,7 @@ const mockVscode = {
   },
   workspace: {
     textDocuments: [] as MockDocument[],
-    fs: { stat: jest.fn() },
+    fs: { stat: jest.fn(), readFile: jest.fn() },
     asRelativePath: jest.fn((uri: { fsPath: string }) => uri.fsPath),
     openTextDocument: jest.fn(),
     getConfiguration: jest.fn(() => ({
@@ -130,8 +133,17 @@ const mockVscode = {
     onDidChangeTextDocument: jest.fn(disposable),
     onDidCloseTextDocument: jest.fn(disposable),
     onDidGrantWorkspaceTrust: jest.fn(disposable),
+    onDidChangeWorkspaceFolders: jest.fn(disposable),
+    createFileSystemWatcher: jest.fn(() => ({
+      onDidChange: jest.fn(disposable),
+      onDidCreate: jest.fn(disposable),
+      onDidDelete: jest.fn(disposable),
+      dispose: jest.fn(),
+    })),
     registerTextDocumentContentProvider: jest.fn(disposable),
     isTrusted: true,
+    workspaceFolders: undefined as Array<{ uri: { path: string }; name: string }> | undefined,
+    workspaceFile: undefined as { scheme: string; path: string } | undefined,
   },
 };
 
@@ -156,6 +168,10 @@ describe('MaxiMinion VS Code commands', () => {
     for (const key of Object.keys(globalStateValues)) delete globalStateValues[key];
     for (const key of Object.keys(workspaceStateValues)) delete workspaceStateValues[key];
     mockVscode.workspace.isTrusted = true;
+    mockVscode.workspace.workspaceFolders = undefined;
+    mockVscode.workspace.workspaceFile = undefined;
+    mockVscode.workspace.fs.stat.mockReset();
+    mockVscode.workspace.fs.readFile.mockReset();
     mockVscode.workspace.textDocuments = [];
     mockVscode.window.showInformationMessage.mockResolvedValue(undefined);
     mockVscode.window.showWarningMessage.mockResolvedValue(undefined);
@@ -631,30 +647,63 @@ describe('MaxiMinion VS Code commands', () => {
       expect(report).toContain('http://localhost:11434');
     });
 
-    test('tells the user once when workspace settings try to lower protection', () => {
-      workspaceConfigValues['secretScrubbing.enabled'] = false;
-      workspaceConfigValues['secretDiagnostics.minConfidence'] = 0.99;
+    const flush = () => new Promise((resolve) => setImmediate(resolve));
+
+    test('tells the user once when a workspace settings file tries to lower protection', async () => {
+      // VS Code drops application-scoped keys from workspace settings, so the file is the only place to see them.
+      mockVscode.workspace.workspaceFolders = [{ uri: { path: '/ws' }, name: 'ws' }];
+      const settingsJsonc =
+        '{\n  // comments and trailing commas are allowed\n  "maximinion.secretScrubbing.enabled": false,\n' +
+        '  "maximinion": { "secretDiagnostics": { "minConfidence": 0.99 } },\n}';
+      mockVscode.workspace.fs.stat.mockImplementation(async (uri: { path: string }) => {
+        if (uri.path !== '/ws/.vscode/settings.json') throw new Error('ENOENT');
+        return { type: mockVscode.FileType.File, size: settingsJsonc.length };
+      });
+      mockVscode.workspace.fs.readFile.mockResolvedValue(new TextEncoder().encode(settingsJsonc));
       const configCallback = (mockVscode.workspace.onDidChangeConfiguration.mock.calls as any[])[0][0];
 
       configCallback({ affectsConfiguration: () => true });
+      await flush();
       configCallback({ affectsConfiguration: () => true });
+      await flush();
 
+      const expected =
+        'maximinion.secretScrubbing.enabled = false (.vscode/settings.json), ' +
+        'maximinion.secretDiagnostics.minConfidence = 0.99 (.vscode/settings.json)';
       const notices = (mockVscode.window.showWarningMessage.mock.calls as string[][]).filter((call) =>
         call[0].includes('try to lower secret protection'),
       );
       expect(notices).toHaveLength(1);
-      expect(notices[0][0]).toContain('maximinion.secretScrubbing.enabled = false, maximinion.secretDiagnostics.minConfidence = 0.99');
+      expect(notices[0][0]).toContain(expected);
       expect(notices[0][1]).toBe('Show Security Status');
-      expect(activityLines()).toEqual([
-        'Ignored workspace setting(s) that would lower protection: maximinion.secretScrubbing.enabled = false, maximinion.secretDiagnostics.minConfidence = 0.99',
-      ]);
+      expect(activityLines()).toEqual([`Ignored workspace setting(s) that would lower protection: ${expected}`]);
+
+      await commandHandlers.get('maximinion.showSecurityStatus')!();
+      const [, provider] = (mockVscode.workspace.registerTextDocumentContentProvider.mock.calls as any[])[0];
+      expect(provider.provideTextDocumentContent()).toMatch(
+        /\| Protection settings \| ⚠️ Attention \| This workspace tries to lower protection \(maximinion\.secretScrubbing\.enabled = false in \.vscode\/settings\.json/,
+      );
     });
 
-    test('does not warn about workspace settings that only make protection stricter', () => {
+    test('also reports values a host exposes through inspect()', async () => {
+      workspaceConfigValues['secretDiagnostics.enabled'] = false;
+      const configCallback = (mockVscode.workspace.onDidChangeConfiguration.mock.calls as any[])[0][0];
+
+      configCallback({ affectsConfiguration: () => true });
+      await flush();
+
+      expect(mockVscode.window.showWarningMessage).toHaveBeenCalledWith(
+        expect.stringContaining('maximinion.secretDiagnostics.enabled = false (workspace settings)'),
+        'Show Security Status',
+      );
+    });
+
+    test('does not warn about workspace settings that only make protection stricter', async () => {
       workspaceConfigValues['secretDiagnostics.minConfidence'] = 0.5;
       const configCallback = (mockVscode.workspace.onDidChangeConfiguration.mock.calls as any[])[0][0];
 
       configCallback({ affectsConfiguration: () => true });
+      await flush();
 
       expect(mockVscode.window.showWarningMessage).not.toHaveBeenCalled();
     });

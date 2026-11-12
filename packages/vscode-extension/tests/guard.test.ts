@@ -46,6 +46,8 @@ import { findHiddenUnicode } from '../src/guard/hidden-unicode';
 import { getSecurityPosture, PostureInputs, renderPostureMarkdown } from '../src/guard/posture';
 import { SENSITIVE_EXCEPTIONS, SENSITIVE_RULES, sensitiveReason } from '../src/guard/sensitive-paths';
 import { readForScan, SCAN_LIMITS } from '../src/guard/workspace-reader';
+import { settingsFromFile } from '../src/guard/workspace-settings';
+import { findIgnoredOverrides } from '../src/settings';
 
 afterAll(() => {
   fs.rmSync(workspaceRoot, { recursive: true, force: true });
@@ -87,6 +89,52 @@ describe('sensitiveReason', () => {
   });
 });
 
+describe('workspace settings files', () => {
+  const userConfig = (values: Record<string, unknown> = {}) =>
+    ({ inspect: (key: string) => ({ key, globalValue: values[key] }) }) as never;
+
+  test('reads JSONC settings files, including nested keys', () => {
+    const source = settingsFromFile(
+      '.vscode/settings.json',
+      '{ /* c */ "maximinion.secretScrubbing.enabled": false, "maximinion": { "secretDiagnostics.enabled": false }, "[typescript]": { "x": 1 }, }',
+    );
+
+    expect(source?.settings).toMatchObject({
+      'maximinion.secretScrubbing.enabled': false,
+      'maximinion.secretDiagnostics.enabled': false,
+    });
+    expect(Object.keys(source!.settings).some((key) => key.startsWith('['))).toBe(false);
+  });
+
+  test('reads dev container and workspace file settings', () => {
+    expect(
+      settingsFromFile(
+        '.devcontainer/devcontainer.json',
+        '{ "customizations": { "vscode": { "settings": { "maximinion.secretScrubbing.enabled": false } } } }',
+      )?.settings,
+    ).toEqual({ 'maximinion.secretScrubbing.enabled': false });
+    expect(
+      settingsFromFile('team.code-workspace', '{ "folders": [], "settings": { "maximinion.secretDiagnostics.minConfidence": 1 } }')?.settings,
+    ).toEqual({ 'maximinion.secretDiagnostics.minConfidence': 1 });
+    expect(settingsFromFile('.vscode/settings.json', 'not json')).toBeUndefined();
+  });
+
+  test('flags only values that differ from the user setting and would lower protection', () => {
+    const sources = [
+      { source: '.vscode/settings.json', settings: { 'maximinion.secretScrubbing.enabled': false, 'maximinion.secretDiagnostics.minConfidence': 0.6 } },
+      { source: 'team.code-workspace', settings: { 'maximinion.secretDiagnostics.enabled': true } },
+    ];
+
+    expect(findIgnoredOverrides(userConfig(), sources)).toEqual([
+      { key: 'secretScrubbing.enabled', attempted: false, effective: true, weakens: true, source: '.vscode/settings.json' },
+      { key: 'secretDiagnostics.minConfidence', attempted: 0.6, effective: 0.75, weakens: false, source: '.vscode/settings.json' },
+    ]);
+    expect(findIgnoredOverrides(userConfig({ 'secretScrubbing.enabled': false }), sources).map((o) => o.key)).not.toContain(
+      'secretScrubbing.enabled',
+    );
+  });
+});
+
 describe('security posture', () => {
   const inputs: PostureInputs = {
     scrubbing: true,
@@ -114,8 +162,8 @@ describe('security posture', () => {
       scrubbing: false,
       trusted: false,
       ignoredOverrides: [
-        { key: 'secretDiagnostics.enabled', attempted: false, effective: true, weakens: true },
-        { key: 'secretDiagnostics.minConfidence', attempted: 0.5, effective: 0.75, weakens: false },
+        { key: 'secretDiagnostics.enabled', attempted: false, effective: true, weakens: true, source: '.vscode/settings.json' },
+        { key: 'secretDiagnostics.minConfidence', attempted: 0.5, effective: 0.75, weakens: false, source: '.vscode/settings.json' },
       ],
     });
 
